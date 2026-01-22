@@ -12,13 +12,22 @@ Be brukeren beskrive uttrekket med egne ord. F.eks:
 - "5G-dekning per fylke"
 - "Antall fiber-abonnementer"
 
-### Spørsmål 2: Hvilken datakilde?
+### Spørsmål 2: Hvilket år?
+Alternativer:
+- **2024** (nyeste data, 15 fylker)
+- **2023** (11 fylker, første år med mobildekning)
+- **2022** (11 fylker, ingen mobildekning)
+- **Flere år** (historisk sammenligning)
+
+**Merk:** mob.parquet finnes kun fra 2023. Fylkesinndelingen endret seg i 2024.
+
+### Spørsmål 3: Hvilken datakilde?
 Alternativer:
 - **fbb** (fastbredbånd dekning) - for dekningsdata
-- **mob** (mobildekning) - for 4G/5G dekning
+- **mob** (mobildekning) - for 4G/5G dekning (kun 2023+)
 - **ab** (abonnementer) - for abonnementsdata
 
-### Spørsmål 3: Hvilke filtre trengs?
+### Spørsmål 4: Hvilke filtre trengs?
 Still oppfølgingsspørsmål basert på datakilde:
 
 For **fbb**:
@@ -36,15 +45,17 @@ For **ab**:
 - Privat eller bedrift?
 - MDU eller SDU?
 
-### Spørsmål 4: Populasjon
+### Spørsmål 5: Populasjon
 - Tettsted
 - Spredtbygd
 - Alle
 
-### Spørsmål 5: Aggregeringsnivå
+### Spørsmål 6: Aggregeringsnivå
 - Per fylke
 - Per kommune
 - Kun nasjonalt
+
+**Ved historisk sammenligning med fylkesfordeling:** Vær obs på at fylkesinndelingen er ulik mellom 2022-2023 (11 fylker) og 2024 (15 fylker). Nasjonalt nivå anbefales for tidsserier.
 
 ## Steg 2: Lag scriptet
 
@@ -54,10 +65,22 @@ Når du har all informasjon:
 2. Skriv scriptet til `uttrekk/YYYY-MM-DD/XX_navn.py`
 3. Følg mønsteret fra CLAUDE.md og examples/
 4. Bruk library-funksjonene (filter_teknologi, filter_hastighet, etc.)
-5. Inkluder alltid:
-   - Docstring med beskrivelse og kriterier
+5. Bruk `load_data(år)` med riktig årsparameter
+6. Inkluder alltid:
+   - Docstring med beskrivelse, kriterier og årstall
    - Nasjonal aggregering
    - validate_and_save() for lagring
+
+### Eksempel med årsparameter:
+```python
+# Last data for 2023
+adr, fbb, mob, ab = load_data(2023)
+
+# For historisk sammenligning, last flere år:
+adr_22, fbb_22, _, ab_22 = load_data(2022)
+adr_23, fbb_23, mob_23, ab_23 = load_data(2023)
+adr_24, fbb_24, mob_24, ab_24 = load_data(2024)
+```
 
 ## Steg 3: Kjør og valider
 
