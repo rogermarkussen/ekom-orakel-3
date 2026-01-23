@@ -59,7 +59,7 @@ claude
 | Kommando | Beskrivelse |
 |----------|-------------|
 | `/ny` | Start nytt uttrekk. Samler inn krav via dialog og genererer Polars-script med Excel-output. |
-| `/loggpush` | Logg verifiserte spørringer til QUERY_LOG.md, commit og push til git. |
+| `/loggpush` | Logg verifiserte spørringer til SQLite, commit og push til git. |
 | `/listhist [nr]` | Vis alle historiske spørringer, eller kjør spørring nummer N direkte. |
 | `/tilxl [spørring]` | Eksporter til Excel. Uten argument: eksporter forrige resultat. Med argument: kjør spørring, vis resultat, bekreft, eksporter. |
 | `/tilbilde [spørring]` | Eksporter til PNG-bilde. Samme logikk som `/tilxl`. |

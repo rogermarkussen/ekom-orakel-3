@@ -14,7 +14,7 @@ Du er en autonom dataanalytiker. Din jobb er å besvare brukerens spørsmål om 
 6. **Lagre scripts.** Alle scripts lagres i `uttrekk/YYYY-MM-DD/`.
 7. **Kjør med uv.** Bruk alltid `uv run python script.py`.
 8. **HC/HP kun for fiber.** Spør BARE om HC/HP-filter når fiber er inkludert i uttrekket.
-9. **Lær av feil.** Les `CORRECTIONS.md` FØR du skriver SQL eller Polars-kode.
+9. **Lær av feil.** Korreksjoner lagres i SQLite (`lib/knowledge.db`) og valideres automatisk via `validate_pre_execution()`.
 10. **Ikke logg underveis.** Samle opp og logg alt når brukeren kjører `/loggpush`.
 11. **Spør om verifisering.** Etter hvert svar, spør: "Er resultatet korrekt?" Når bekreftet, gi påminnelse: "Husk `/loggpush` for å lagre sesjonen."
 12. **Fylkesvis fordeling = tabell først.** Tabell med Fylke sortert alfabetisk, NASJONALT nederst.
@@ -23,6 +23,7 @@ Du er en autonom dataanalytiker. Din jobb er å besvare brukerens spørsmål om 
 15. **Historiske spørsmål → bruk dekning_tek/dekning_hast.** Les `docs/DEKNING.md` for detaljer.
 16. **Ekom-spørsmål → les docs/EKOM.md først.** Ekom har komplekse regler for å unngå dobbeltelling.
 17. **Detaljerte kolonnedefinisjoner → les docs/DATA_DICT.md.** For adr, fbb, mob, ab og DuckDB-mønstre.
+18. **Tidsserier på fylkesnivå → bruk fylke24.** Ved tidsserier som inkluderer 2024, bruk `fylke24`-kolonnen for alle år (2022, 2023, 2024) for konsistent fylkesinndeling.
 
 ---
 
@@ -59,16 +60,14 @@ Du er en autonom dataanalytiker. Din jobb er å besvare brukerens spørsmål om 
 ```
 ekom-orakel-2/
   CLAUDE.md           # Regler (denne filen)
-  CORRECTIONS.md      # Dokumenterte feil
-  QUERY_LOG.md        # Verifiserte spørringer (backup)
   historie.md         # Kontekst for data 2007-2011
   docs/               # Detaljert dokumentasjon
     EKOM.md           # ekom.parquet dokumentasjon
     DEKNING.md        # Historiske dekningsdata
     DATA_DICT.md      # Kolonnedefinisjoner, DuckDB patterns
   lib/                # Data (IKKE endre)
-    knowledge.db      # SQLite kunnskapsbase (FTS5)
-    knowledge/        # JSON backup av spørringer
+    knowledge.db      # SQLite kunnskapsbase (spørringer + korreksjoner)
+    knowledge/        # JSON backup (queries.json, corrections.json)
     ekom.parquet      # Markedsstatistikk 2000-2025
     dekning_tek.parquet   # Teknologidekning 2013-2024
     dekning_hast.parquet  # Hastighetsdekning 2010-2024
@@ -187,7 +186,9 @@ Data lagres i **kbps**. Brukere sier **Mbit/s**.
 | VESTFOLD OG TELEMARK | VESTFOLD, TELEMARK |
 | TROMS OG FINNMARK | TROMS, FINNMARK |
 
-Bruk `map_fylke_2020_to_2024()` for historiske sammenligninger.
+**For tidsserier:** adr-filene har kolonnen `fylke24` som mapper alle adresser til 2024-fylkene. Ved tidsserier som inkluderer 2024, bruk ALLTID `fylke24` i stedet for `fylke` for alle år. Dette sikrer konsistent fylkesinndeling gjennom hele tidsserien.
+
+Bruk `map_fylke_2020_to_2024()` kun for enkeltårs-spørringer der du trenger å konvertere.
 
 ---
 
@@ -237,13 +238,11 @@ Etter hver spørring:
 
 ### Ved `/loggpush` lagres til:
 
-**SQLite Knowledge Base** (primær):
+**SQLite Knowledge Base**:
 ```python
 kb = KnowledgeBase()
 kb.add_query(question, sql, result_summary, category, tags)
 ```
-
-**QUERY_LOG.md** (backup for lesbarhet)
 
 ---
 
