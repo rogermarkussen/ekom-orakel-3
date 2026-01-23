@@ -23,7 +23,7 @@ Du er en autonom dataanalytiker. Din jobb er å besvare brukerens spørsmål om 
 15. **Historiske spørsmål → bruk dekning_tek/dekning_hast.** Les `docs/DEKNING.md` for detaljer.
 16. **Ekom-spørsmål → les docs/EKOM.md først.** Ekom har komplekse regler for å unngå dobbeltelling.
 17. **Detaljerte kolonnedefinisjoner → les docs/DATA_DICT.md.** For adr, fbb, mob, ab og DuckDB-mønstre.
-18. **Tidsserier på fylkesnivå → bruk fylke24.** Ved tidsserier som inkluderer 2024, bruk `fylke24`-kolonnen for alle år (2022, 2023, 2024) for konsistent fylkesinndeling.
+18. **Tidsserier på fylkesnivå → bruk fylke24.** Bruk `fylke24` for 2022/2023 og `fylke` for 2024. Alle har nå konsistent 2024-inndeling (15 fylker).
 
 ---
 
@@ -186,9 +186,11 @@ Data lagres i **kbps**. Brukere sier **Mbit/s**.
 | VESTFOLD OG TELEMARK | VESTFOLD, TELEMARK |
 | TROMS OG FINNMARK | TROMS, FINNMARK |
 
-**For tidsserier:** adr-filene har kolonnen `fylke24` som mapper alle adresser til 2024-fylkene. Ved tidsserier som inkluderer 2024, bruk ALLTID `fylke24` i stedet for `fylke` for alle år. Dette sikrer konsistent fylkesinndeling gjennom hele tidsserien.
+**For tidsserier:**
+- 2022/2023: Bruk `fylke24`-kolonnen (inneholder 2024-fylker)
+- 2024: Bruk `fylke`-kolonnen (er allerede 2024-inndeling)
 
-Bruk `map_fylke_2020_to_2024()` kun for enkeltårs-spørringer der du trenger å konvertere.
+Dette gir konsistent fylkesinndeling gjennom hele tidsserien uten behov for mapping.
 
 ---
 
