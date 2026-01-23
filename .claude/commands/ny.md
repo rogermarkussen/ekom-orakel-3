@@ -2,6 +2,27 @@
 
 Du skal hjelpe brukeren med å lage et nytt uttrekk-script. Bruk AskUserQuestion-verktøyet for å samle inn nødvendig informasjon.
 
+## Steg 0: Finn lignende spørringer
+
+Før du starter, søk etter lignende spørringer i kunnskapsbasen:
+
+```python
+from library import QueryMatcher
+
+matcher = QueryMatcher()
+suggestions = matcher.suggest_for_question("brukerens beskrivelse")
+
+if suggestions:
+    print("Lignende tidligere spørringer:")
+    for q in suggestions:
+        print(f"  - Q:{q.id}: {q.question[:60]}...")
+```
+
+Hvis det finnes lignende spørringer, vis dem til brukeren og spør om de vil:
+1. Gjenbruke eksisterende spørring
+2. Bruke som utgangspunkt
+3. Lage helt nytt uttrekk
+
 ## Steg 1: Samle informasjon
 
 Still følgende spørsmål til brukeren (bruk AskUserQuestion):
@@ -82,14 +103,64 @@ adr_23, fbb_23, mob_23, ab_23 = load_data(2023)
 adr_24, fbb_24, mob_24, ab_24 = load_data(2024)
 ```
 
-## Steg 3: Kjør og valider
+## Steg 3: Valider SQL før kjøring
+
+Før du kjører spørringen, valider den mot kjente feil:
+
+```python
+from library import validate_pre_execution
+
+issues = validate_pre_execution(sql)
+for issue in issues:
+    if issue.level == "error":
+        print(f"FEIL: {issue.message}")
+        print(f"Løsning: {issue.suggestion}")
+    elif issue.level == "warning":
+        print(f"ADVARSEL: {issue.message}")
+```
+
+## Steg 4: Kjør og valider resultat
 
 1. Kjør scriptet med `uv run python uttrekk/YYYY-MM-DD/XX_navn.py`
-2. Sjekk at resultatene gir mening (se sanity checks i CLAUDE.md)
-3. Vis resultatene til brukeren
+2. Valider resultatet:
+   ```python
+   from library import validate_result
+
+   issues = validate_result(df, "metrikk_col", "total_col")
+   for issue in issues:
+       print(f"{issue.level}: {issue.message}")
+   ```
+3. Sjekk at resultatene gir mening (se sanity checks i CLAUDE.md)
+4. Vis resultatene til brukeren
+
+## Alternativ: Bruk Query Builder
+
+For standard dekningsspørringer, bruk Query Builder i stedet for å skrive SQL manuelt:
+
+```python
+from library import CoverageQuery
+
+query = CoverageQuery(
+    year=2024,
+    teknologi=["fiber"],
+    populasjon="spredtbygd",
+    group_by="fylke",
+    kun_hc=True,
+)
+
+print(query.describe())  # Beskrivelse på norsk
+result = query.execute()
+print(result)
+```
+
+Fordeler:
+- Eliminerer vanlige feil automatisk
+- Håndterer fylkesendringer
+- Konsistent output-format
 
 ## Viktig
 
 - ALDRI gjett på definisjoner - spør brukeren
 - Bruk ALLTID library-funksjonene
 - Valider at tallene gir mening før du presenterer dem
+- Sjekk mot kjente feil med `validate_pre_execution()`

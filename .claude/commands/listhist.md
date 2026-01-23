@@ -1,58 +1,89 @@
 # List historiske spørringer
 
-Vis alle verifiserte spørringer fra QUERY_LOG.md, eller kjør en spesifikk spørring.
+Vis alle verifiserte spørringer fra kunnskapsbasen, eller kjør en spesifikk spørring.
 
 ## Bruk
 
 - `/listhist` - Vis alle spørringer som tabell
 - `/listhist 3` - Kjør spørring nummer 3
+- `/listhist fiber` - Søk etter spørringer om fiber
+- `/listhist --category Dekning` - Filtrer på kategori
 
 ## Instruksjoner
 
 ### Uten argument: Vis indeks
 
-1. Finn linjenummeret for `<!-- INDEKS-SLUTT -->`:
-   ```bash
-   grep -n "INDEKS-SLUTT" QUERY_LOG.md
+1. Bruk KnowledgeBase for å liste spørringer:
+   ```python
+   from library import KnowledgeBase
+   kb = KnowledgeBase()
+   queries = kb.list_queries()
    ```
-2. Les QUERY_LOG.md fra start til det linjenummeret (bruk `limit` parameter)
-3. Vis tabellen under "## Indeks" direkte til brukeren
 
-### Med argument: Kjør spørring N
-
-**Effektiv navigering med markører:**
-
-1. Finn linjenummer for start og slutt av spørringen:
-   ```bash
-   grep -n "<!-- Q:" QUERY_LOG.md | grep -E "Q:N -->|Q:$((N+1)) -->|LOGG-SLUTT"
+2. Formater som tabell:
    ```
-   Dette gir deg:
-   - Linjenummer for `<!-- Q:N -->` (start)
-   - Linjenummer for `<!-- Q:N+1 -->` eller `<!-- LOGG-SLUTT -->` (slutt)
+   | # | Kategori | Beskrivelse | Tags | Verifisert |
+   |---|----------|-------------|------|------------|
+   | 1 | Ekom | Kontantkort-utvikling | ekom, kontantkort | 2026-01-19 |
+   ```
 
-2. Les fra startlinje til sluttlinje med Read-verktøyet:
-   - `offset` = startlinjenummer
-   - `limit` = sluttlinje - startlinje
+### Med nummer: Kjør spørring N
 
-3. Finn SQL-spørringen i ```sql ... ``` blokken
+1. Hent spørring fra database:
+   ```python
+   from library import KnowledgeBase
+   kb = KnowledgeBase()
+   query = kb.get_query(N)
+   ```
 
-4. Kjør SQL-spørringen med DuckDB
+2. Vis spørringens SQL
 
-5. Vis resultatet (husk regel 12: tabell først for fylkesfordeling)
+3. Kjør SQL med DuckDB:
+   ```python
+   from library import execute_sql
+   result = execute_sql(query.sql)
+   print(result)
+   ```
 
-**Eksempel for spørring 7:**
-```bash
-grep -n "<!-- Q:" QUERY_LOG.md | grep -E "Q:7 -->|Q:8 -->|LOGG-SLUTT"
-# Output: 365:<!-- Q:7 -->
-#         392:<!-- Q:8 -->
-# Les linje 365-391 (offset=365, limit=27)
+4. Vis resultatet (husk regel 12: tabell først for fylkesfordeling)
+
+### Med søkeord: Finn lignende spørringer
+
+1. Bruk QueryMatcher for semantisk søk:
+   ```python
+   from library import QueryMatcher
+   matcher = QueryMatcher()
+   results = matcher.find_similar("fiber rural dekning")
+   ```
+
+2. Vis topp 5 resultater med score:
+   ```
+   | # | Score | Kategori | Beskrivelse |
+   |---|-------|----------|-------------|
+   | 3 | 0.85  | Dekning  | Fiberdekning spredtbygd |
+   ```
+
+3. Spør om brukeren vil kjøre en av dem
+
+## Eksempler
+
+```
+/listhist
+→ Viser tabell med alle 12 spørringer
+
+/listhist 7
+→ Kjører spørring 7 (Nasjonal teknologidekning 2016-2024)
+
+/listhist fiber spredtbygd
+→ Søker og finner Q:3, Q:6 som handler om fiber i spredtbygd
+
+/listhist --category Konkurranse
+→ Viser kun spørringer i kategorien "Konkurranse"
 ```
 
 ## Viktig
 
-- Les kun toppen av filen for `/listhist` uten argument (effektivitet)
-- Bruk markører `<!-- Q:N -->` for å navigere direkte til spørringer
-- Les alltid til neste markør for å få hele spørringen
-- Indeksen er sannhetskilden for oversikten
-- `<!-- INDEKS-SLUTT -->` markerer hvor indeksen slutter
-- `<!-- LOGG-SLUTT -->` markerer hvor logg-seksjonen slutter
+- Bruk SQLite knowledge base (`lib/knowledge.db`)
+- Fall tilbake til QUERY_LOG.md hvis database ikke finnes
+- Ved søk: utvid med synonymer (rural→spredtbygd, ftth→fiber)
+- Indeksen i databasen er sannhetskilden
