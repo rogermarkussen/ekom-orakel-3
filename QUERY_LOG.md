@@ -17,6 +17,8 @@ Denne filen logger DuckDB-spørringer som brukeren har bekreftet gir korrekte re
 | 7 | Historikk | Nasjonal teknologidekning 2016-2024 | 2026-01-23 |
 | 8 | Konkurranse | Fritidsboliger med fiber fra ≥2 tilbydere (Innlandet) | 2026-01-23 |
 | 9 | Konkurranse | Dominerende fibertilbydere i Innlandet | 2026-01-23 |
+| 10 | Tilbydere | fbb-tilbydere uten ab-rapportering 2023 | 2026-01-23 |
+| 11 | Tilbydere | fbb-tilbydere uten ab-rapportering 2024 | 2026-01-23 |
 
 <!-- INDEKS-SLUTT - Ikke fjern denne linjen -->
 
@@ -448,6 +450,56 @@ LIMIT 15
 
 **Resultat:** Eidsiva Bredbånd dominerer med 56.4% av husstander og 78.6% av fritidsboliger. Telenor nr. 2 med 23.0%/11.5%.
 **Notater:** Bruker window function for å beregne markedsandeler. Eidsiva har nær monopol på fritidsboliger.
+
+---
+
+### Tilbydere: fbb-tilbydere uten ab-rapportering 2023
+
+**Spørsmål:** "List opp alle tilbydere som har levert data på fast bredbånd (fbb), men som ikke har rapportert ab på adressenivå" (2023)
+**Verifisert:** 2026-01-23
+**Promotert:** Nei
+
+```sql
+WITH fbb_tilbydere AS (
+    SELECT DISTINCT tilb FROM 'lib/2023/fbb.parquet'
+),
+ab_tilbydere AS (
+    SELECT DISTINCT tilb FROM 'lib/2023/ab.parquet'
+)
+SELECT f.tilb AS tilbyder
+FROM fbb_tilbydere f
+LEFT JOIN ab_tilbydere a ON f.tilb = a.tilb
+WHERE a.tilb IS NULL
+ORDER BY f.tilb
+```
+
+**Resultat:** 17 tilbydere: avur, bredbåndsfylket, bykle breiband, dragefossen, eltele, fri sikt, hvaler bredbånd, ice, indre salten energi, kraftia, nettstar, nordix data, obos opennet, radiolink telemark, sogn service drift, starlink, øvre eiker fibernett
+**Notater:** Tilbydere som rapporterer dekning men ikke abonnenter på adressenivå.
+
+---
+
+### Tilbydere: fbb-tilbydere uten ab-rapportering 2024
+
+**Spørsmål:** "Kan du gjøre det samme for 2024" (tilbydere med fbb men ikke ab)
+**Verifisert:** 2026-01-23
+**Promotert:** Nei
+
+```sql
+WITH fbb_tilbydere AS (
+    SELECT DISTINCT tilb FROM 'lib/2024/fbb.parquet'
+),
+ab_tilbydere AS (
+    SELECT DISTINCT tilb FROM 'lib/2024/ab.parquet'
+)
+SELECT f.tilb AS tilbyder
+FROM fbb_tilbydere f
+LEFT JOIN ab_tilbydere a ON f.tilb = a.tilb
+WHERE a.tilb IS NULL
+ORDER BY f.tilb
+```
+
+**Resultat:** 9 tilbydere: altibox bedrift, avur, eiker fibernett, gigafib holding, hvaler bredbånd, lyse tele, lysvatn, nettstar, obos opennet
+**Notater:** Reduksjon fra 17 (2023) til 9 (2024) - flere tilbydere har begynt å rapportere ab-data.
 
 ---
 
