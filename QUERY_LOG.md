@@ -14,6 +14,9 @@ Denne filen logger DuckDB-spørringer som brukeren har bekreftet gir korrekte re
 | 4 | Dekning | Alle teknologier per fylke (fbb + mob) | 2026-01-19 |
 | 5 | Konkurranse | Fiberdekning fordelt på antall tilbydere | 2026-01-19 |
 | 6 | Dekning | Husstander med både kabel og fiber-HC | 2026-01-19 |
+| 7 | Historikk | Nasjonal teknologidekning 2016-2024 | 2026-01-23 |
+| 8 | Konkurranse | Fritidsboliger med fiber fra ≥2 tilbydere (Innlandet) | 2026-01-23 |
+| 9 | Konkurranse | Dominerende fibertilbydere i Innlandet | 2026-01-23 |
 
 <!-- INDEKS-SLUTT - Ikke fjern denne linjen -->
 
@@ -365,6 +368,86 @@ ORDER BY CASE WHEN Fylke = 'NASJONALT' THEN 1 ELSE 0 END, Fylke
 
 **Resultat:** 21.4% nasjonalt (551k hus). Oslo høyest (38.7%), Finnmark lavest (1.6%).
 **Notater:** Bruker INTERSECT for å finne adresser med begge teknologier. fiber-HC betyr hc = true.
+
+---
+
+### Historikk: Nasjonal teknologidekning 2016-2024
+
+**Spørsmål:** "Kan du gi meg den nasjonale dekningen for alle teknologier fra 2016 - 2024"
+**Verifisert:** 2026-01-23
+**Promotert:** Nei
+
+```sql
+-- Faste bredbåndsteknologier
+PIVOT (
+    SELECT ar, tek, ROUND(dekning * 100, 1) as prosent
+    FROM 'lib/dekning_tek.parquet'
+    WHERE fylke = 'NASJONALT'
+      AND geo = 'totalt'
+      AND ar BETWEEN 2016 AND 2024
+      AND tek IN ('fiber', 'kabel', 'dsl', 'ftb', 'fiber_kabel', '4g', '5g')
+)
+ON tek
+USING FIRST(prosent)
+ORDER BY ar
+```
+
+**Resultat:** Fiber økte fra 46.1% (2016) til 91.0% (2024). Kabel sank fra 52.5% til 34.1%. 5G gikk fra 5.4% (2020) til 99.7% (2024).
+**Notater:** Bruker dekning_tek.parquet for historiske data. Dekningsverdier er desimaltall (0-1), multipliser med 100 for prosent.
+
+---
+
+### Konkurranse: Fritidsboliger med fiber fra ≥2 tilbydere (Innlandet)
+
+**Spørsmål:** "Hvor stor andel av fritidsboliger i Innlandet fylke har tilbud om fiber fra minst to tilbydere"
+**Verifisert:** 2026-01-23
+**Promotert:** Nei
+
+```sql
+WITH fiber_tilbydere AS (
+    SELECT adrid, COUNT(DISTINCT tilb) as antall_tilbydere
+    FROM 'lib/2024/fbb.parquet'
+    WHERE tek = 'fiber'
+    GROUP BY adrid
+)
+SELECT
+    SUM(CASE WHEN ft.antall_tilbydere >= 2 THEN a.fritid ELSE 0 END) as fritid_2_tilbydere,
+    SUM(CASE WHEN ft.antall_tilbydere >= 1 THEN a.fritid ELSE 0 END) as fritid_fiber_totalt,
+    SUM(a.fritid) as totalt_fritid,
+    ROUND(SUM(CASE WHEN ft.antall_tilbydere >= 2 THEN a.fritid ELSE 0 END) * 100.0 / SUM(a.fritid), 1) as prosent_2_tilbydere
+FROM 'lib/2024/adr.parquet' a
+LEFT JOIN fiber_tilbydere ft ON a.adrid = ft.adrid
+WHERE a.fylke = 'INNLANDET'
+```
+
+**Resultat:** 1.2% (1 123 av 92 282 fritidsboliger). 27.7% har fiber fra minst én tilbyder.
+**Notater:** Bruker fritid-kolonnen i adr.parquet. Svært begrenset konkurranse for fritidsboliger.
+
+---
+
+### Konkurranse: Dominerende fibertilbydere i Innlandet
+
+**Spørsmål:** "Hvilke tilbydere er det som dominerer i Innlandet"
+**Verifisert:** 2026-01-23
+**Promotert:** Nei
+
+```sql
+SELECT
+    f.tilb,
+    SUM(a.hus) as husstander,
+    SUM(a.fritid) as fritidsboliger,
+    ROUND(SUM(a.hus) * 100.0 / SUM(SUM(a.hus)) OVER (), 1) as andel_hus_pct,
+    ROUND(SUM(a.fritid) * 100.0 / SUM(SUM(a.fritid)) OVER (), 1) as andel_fritid_pct
+FROM 'lib/2024/fbb.parquet' f
+JOIN 'lib/2024/adr.parquet' a ON f.adrid = a.adrid
+WHERE a.fylke = 'INNLANDET' AND f.tek = 'fiber'
+GROUP BY f.tilb
+ORDER BY husstander DESC
+LIMIT 15
+```
+
+**Resultat:** Eidsiva Bredbånd dominerer med 56.4% av husstander og 78.6% av fritidsboliger. Telenor nr. 2 med 23.0%/11.5%.
+**Notater:** Bruker window function for å beregne markedsandeler. Eidsiva har nær monopol på fritidsboliger.
 
 ---
 

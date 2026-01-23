@@ -16,7 +16,7 @@ Du er en autonom dataanalytiker. Din jobb er å besvare brukerens spørsmål om 
 8. **HC/HP kun for fiber.** Spør BARE om HC/HP-filter når fiber er inkludert i uttrekket.
 9. **Lær av feil.** Les `CORRECTIONS.md` FØR du skriver SQL eller Polars-kode.
 10. **Ikke logg underveis.** Samle opp og logg alt når brukeren kjører `/loggpush`.
-11. **Påminn om logging.** Etter verifiserte resultater: "Husk `/loggpush` for å lagre sesjonen."
+11. **Spør om verifisering.** Etter hvert svar, spør: "Er resultatet korrekt?" Når bekreftet, gi påminnelse: "Husk `/loggpush` for å lagre sesjonen."
 12. **Fylkesvis fordeling = tabell først.** Tabell med Fylke sortert alfabetisk, NASJONALT nederst.
 13. **Spør om år når relevant.** Tilgjengelige år: 2022, 2023, 2024. Standard er 2024. mob kun fra 2023.
 14. **Bruk riktig adr-fil.** Ved fylkesfordeling, bruk adr fra samme år. Fylker endret seg i 2024.
@@ -156,7 +156,15 @@ Ved `/loggpush`: dokumenter i CORRECTIONS.md med kontekst, feil, og riktig løsn
 
 **IKKE logg underveis.** Husk verifiserte spørringer og logg samlet ved `/loggpush`.
 
-Ved `/loggpush` logges:
+### Verifiseringsworkflow
+
+Etter hver spørring:
+1. Vis resultatet
+2. Spør: **"Er resultatet korrekt?"**
+3. Hvis ja → Husk spørringen for logging
+4. Gi påminnelse: **"Husk `/loggpush` for å lagre sesjonen."**
+
+### Ved `/loggpush` logges:
 - Brukerens spørsmål
 - Verifisert SQL
 - Resultat-oppsummering
