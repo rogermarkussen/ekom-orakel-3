@@ -81,6 +81,14 @@ from library.query_builder import (
     HistoricalQuery,
     quick_coverage,
 )
+from library.doc_checker import (
+    DocumentChecker,
+    NumberFinding,
+    DataSourceMatch,
+    LearnedPattern,
+    parse_norwegian_number,
+    find_document,
+)
 
 __all__ = [
     # Loader
@@ -136,4 +144,11 @@ __all__ = [
     "CompetitionQuery",
     "HistoricalQuery",
     "quick_coverage",
+    # Document Checker
+    "DocumentChecker",
+    "NumberFinding",
+    "DataSourceMatch",
+    "LearnedPattern",
+    "parse_norwegian_number",
+    "find_document",
 ]
