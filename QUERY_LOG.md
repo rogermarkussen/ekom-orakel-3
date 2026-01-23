@@ -19,6 +19,7 @@ Denne filen logger DuckDB-spørringer som brukeren har bekreftet gir korrekte re
 | 9 | Konkurranse | Dominerende fibertilbydere i Innlandet | 2026-01-23 |
 | 10 | Tilbydere | fbb-tilbydere uten ab-rapportering 2023 | 2026-01-23 |
 | 11 | Tilbydere | fbb-tilbydere uten ab-rapportering 2024 | 2026-01-23 |
+| 12 | Tilbydere | fbb-tilbydere uten ab-rapportering 2022 | 2026-01-23 |
 
 <!-- INDEKS-SLUTT - Ikke fjern denne linjen -->
 
@@ -500,6 +501,31 @@ ORDER BY f.tilb
 
 **Resultat:** 9 tilbydere: altibox bedrift, avur, eiker fibernett, gigafib holding, hvaler bredbånd, lyse tele, lysvatn, nettstar, obos opennet
 **Notater:** Reduksjon fra 17 (2023) til 9 (2024) - flere tilbydere har begynt å rapportere ab-data.
+
+---
+
+### Tilbydere: fbb-tilbydere uten ab-rapportering 2022
+
+**Spørsmål:** "Kan du se på 2022 også" (tilbydere med fbb men ikke ab)
+**Verifisert:** 2026-01-23
+**Promotert:** Nei
+
+```sql
+WITH fbb_tilbydere AS (
+    SELECT DISTINCT tilb FROM 'lib/2022/fbb.parquet'
+),
+ab_tilbydere AS (
+    SELECT DISTINCT tilb FROM 'lib/2022/ab.parquet'
+)
+SELECT f.tilb AS tilbyder
+FROM fbb_tilbydere f
+LEFT JOIN ab_tilbydere a ON f.tilb = a.tilb
+WHERE a.tilb IS NULL
+ORDER BY f.tilb
+```
+
+**Resultat:** 28 tilbydere: austevoll breiband, avur, bardufoss kabel-tv, berger ikt, bitpro, brdy, eltele, eviny breiband, gigafib bredbånd, gp nett, hardangernett, hesbynett, hundeidvik fibernett, hvaler bredbånd, iaksess, kinsarvik breiband, kragerø bredbånd, kvinnherad breiband, net2you, nettstar, numedal fiber, okapi, radiolink telemark, stordal breiband, tinn energi, tranøy telecom, verdal kabel tv, øvre eiker fibernett
+**Notater:** Utvikling: 28 (2022) → 17 (2023) → 9 (2024). Klar forbedring i ab-rapportering over tid.
 
 ---
 
