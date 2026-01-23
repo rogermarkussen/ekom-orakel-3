@@ -11,17 +11,12 @@ Vis alle verifiserte spørringer fra QUERY_LOG.md, eller kjør en spesifikk spø
 
 ### Uten argument: Vis indeks
 
-1. Les **kun de første 30 linjene** av QUERY_LOG.md (indeksen ligger øverst)
-2. Finn tabellen under "## Indeks"
-3. Vis tabellen direkte til brukeren
-
-Indeksen har formatet:
-```
-| # | Kategori | Beskrivelse | Verifisert |
-|---|----------|-------------|------------|
-| 1 | Ekom | Kontantkort-utvikling 2018-2024 | 2026-01-19 |
-...
-```
+1. Finn linjenummeret for `<!-- INDEKS-SLUTT -->`:
+   ```bash
+   grep -n "INDEKS-SLUTT" QUERY_LOG.md
+   ```
+2. Les QUERY_LOG.md fra start til det linjenummeret (bruk `limit` parameter)
+3. Vis tabellen under "## Indeks" direkte til brukeren
 
 ### Med argument: Kjør spørring N
 
