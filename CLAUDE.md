@@ -40,12 +40,17 @@ Du er en autonom dataanalytiker. Din jobb er å besvare brukerens spørsmål om 
 
 | Kommando | Beskrivelse |
 |----------|-------------|
-| `/ny` | Start nytt uttrekk. **Påkrevd for alle nye uttrekk.** |
-| `/loggpush` | Logg, commit og push sesjonen. |
-| `/listhist [nr]` | Vis historiske spørringer, eller kjør nr N direkte. |
+| `/ny` | Start nytt uttrekk. Foreslår lignende spørringer fra KB. |
+| `/loggpush` | Logg til SQLite + markdown, commit og push. |
+| `/listhist [nr\|søk]` | Vis spørringer, kjør nr N, eller søk med FTS5. |
 | `/tilxl [spørring]` | Eksporter til Excel. |
 | `/tilbilde [spørring]` | Eksporter til PNG-bilde. |
 | `/graf` | Lag graf av forrige datasett. |
+
+**Eksempler:**
+- `/listhist` - Vis alle spørringer
+- `/listhist 7` - Kjør spørring 7
+- `/listhist fiber spredtbygd` - Søk etter fiber + spredtbygd
 
 ---
 
@@ -55,18 +60,26 @@ Du er en autonom dataanalytiker. Din jobb er å besvare brukerens spørsmål om 
 ekom-orakel-2/
   CLAUDE.md           # Regler (denne filen)
   CORRECTIONS.md      # Dokumenterte feil
-  QUERY_LOG.md        # Verifiserte spørringer
+  QUERY_LOG.md        # Verifiserte spørringer (backup)
   historie.md         # Kontekst for data 2007-2011
   docs/               # Detaljert dokumentasjon
     EKOM.md           # ekom.parquet dokumentasjon
     DEKNING.md        # Historiske dekningsdata
     DATA_DICT.md      # Kolonnedefinisjoner, DuckDB patterns
   lib/                # Data (IKKE endre)
+    knowledge.db      # SQLite kunnskapsbase (FTS5)
+    knowledge/        # JSON backup av spørringer
     ekom.parquet      # Markedsstatistikk 2000-2025
     dekning_tek.parquet   # Teknologidekning 2013-2024
     dekning_hast.parquet  # Hastighetsdekning 2010-2024
     2022/, 2023/, 2024/   # Årlige dekningsdata
   library/            # Python-bibliotek
+    knowledge.py      # SQLite CRUD + FTS5 søk
+    query_matcher.py  # Keyword-søk med synonymer
+    query_builder.py  # Query DSL for dekning
+    validators.py     # Pre/post-execution validering
+    cache.py          # DuckDB caching
+    fylker.py         # Fylkesnormalisering 2020↔2024
   uttrekk/            # Dine scripts og resultater
 ```
 
@@ -99,7 +112,44 @@ from library import (
     # Validering
     add_national_aggregate,  # Legg til NASJONALT-rad
     validate_and_save,       # Print, valider, lagre Excel
+    validate_pre_execution,  # Sjekk SQL mot kjente feil
+    validate_result,         # Sjekk resultat (sanity checks)
+
+    # Query Builder (anbefalt for standard spørringer)
+    CoverageQuery,      # DSL for dekningsspørringer
+    CompetitionQuery,   # DSL for tilbyderkonkurranse
+    quick_coverage,     # quick_coverage("fiber") -> DataFrame
+
+    # Knowledge Base
+    KnowledgeBase,      # SQLite CRUD + FTS5 søk
+    QueryMatcher,       # Finn lignende spørringer
+
+    # Cache
+    get_db,             # DuckDB med registrerte views
+    execute_sql,        # Kjør SQL direkte
+
+    # Fylker
+    FYLKER,             # Liste med 15 fylker (2024)
+    normalize_fylke,    # "viken" -> "VIKEN"
+    map_fylke_2020_to_2024,  # "VIKEN" -> ["AKERSHUS", ...]
 )
+```
+
+### Query Builder (anbefalt)
+
+For standard dekningsspørringer, bruk Query Builder i stedet for manuell SQL:
+
+```python
+from library import CoverageQuery
+
+query = CoverageQuery(
+    year=2024,
+    teknologi=["fiber"],
+    populasjon="spredtbygd",
+    group_by="fylke",
+    kun_hc=True,
+)
+result = query.execute()  # Returnerer DataFrame
 ```
 
 ---
@@ -129,6 +179,18 @@ Data lagres i **kbps**. Brukere sier **Mbit/s**.
 
 ---
 
+## Fylkesendringer 2020→2024
+
+| 2020-2023 (11 fylker) | 2024+ (15 fylker) |
+|-----------------------|-------------------|
+| VIKEN | AKERSHUS, BUSKERUD, ØSTFOLD |
+| VESTFOLD OG TELEMARK | VESTFOLD, TELEMARK |
+| TROMS OG FINNMARK | TROMS, FINNMARK |
+
+Bruk `map_fylke_2020_to_2024()` for historiske sammenligninger.
+
+---
+
 ## Vanlige Feil å Unngå
 
 | Feil | Riktig |
@@ -138,17 +200,26 @@ Data lagres i **kbps**. Brukere sier **Mbit/s**.
 | Sjekke `adrid.is_not_null()` etter join | Legg til markør-kolonne før join |
 | Summere `hus` fra ab | Tell rader for ab |
 | Joine ab med adr | Bruk ab.fylke direkte |
+| Blande fylker fra ulike år | Bruk samme års adr-fil |
 
 ---
 
 ## Selvkorrigering
 
-Når du gjør en feil:
+### Automatisk validering
+
+Bruk `validate_pre_execution(sql)` for å fange kjente feil FØR kjøring:
+- Ekom-query uten `tp='Sum'`
+- Hastighetsfilter med `>` i stedet for `>=`
+- `SUM(ab.hus)` (skal telle rader, ikke summere)
+
+### Ved feil
+
 1. **Rett feilen** og fortsett
 2. **Husk feilen** for logging ved `/loggpush`
 3. **Ikke logg underveis**
 
-Ved `/loggpush`: dokumenter i CORRECTIONS.md med kontekst, feil, og riktig løsning.
+Ved `/loggpush`: lagre i SQLite Knowledge Base med pattern for fremtidig matching.
 
 ---
 
@@ -164,11 +235,15 @@ Etter hver spørring:
 3. Hvis ja → Husk spørringen for logging
 4. Gi påminnelse: **"Husk `/loggpush` for å lagre sesjonen."**
 
-### Ved `/loggpush` logges:
-- Brukerens spørsmål
-- Verifisert SQL
-- Resultat-oppsummering
-- Korreksjoner
+### Ved `/loggpush` lagres til:
+
+**SQLite Knowledge Base** (primær):
+```python
+kb = KnowledgeBase()
+kb.add_query(question, sql, result_summary, category, tags)
+```
+
+**QUERY_LOG.md** (backup for lesbarhet)
 
 ---
 
