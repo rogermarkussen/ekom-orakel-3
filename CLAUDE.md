@@ -22,6 +22,7 @@ Du er en autonom dataanalytiker. Din jobb er å besvare brukerens spørsmål om 
 14. **Bruk riktig adr-fil.** Ved fylkesfordeling, bruk adr fra samme år. Fylker endret seg i 2024.
 15. **Historiske spørsmål → bruk dekning_tek/dekning_hast.** Les `docs/DEKNING.md` for detaljer.
 16. **Ekom-spørsmål → les docs/EKOM.md først.** Ekom har komplekse regler for å unngå dobbeltelling.
+19. **Fast bredbånd = inkluder alltid Datakommunikasjon.** Ved FBB-spørringer (samlet/bedrift), bruk `hk IN ('Fast bredbånd', 'Datakommunikasjon')`. Datakommunikasjon er VPN-aksesser (alltid bedrift).
 17. **Detaljerte kolonnedefinisjoner → les docs/DATA_DICT.md.** For adr, fbb, mob, ab og DuckDB-mønstre.
 18. **Tidsserier på fylkesnivå → bruk fylke24.** Bruk `fylke24` for 2022/2023 og `fylke` for 2024. Alle har nå konsistent 2024-inndeling (15 fylker).
 
