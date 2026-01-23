@@ -236,10 +236,21 @@ class KnowledgeBase:
     def list_queries(
         self,
         category: Optional[str] = None,
+        categories: Optional[list[str]] = None,
+        exclude_categories: Optional[list[str]] = None,
         tag: Optional[str] = None,
-        limit: int = 50,
+        limit: int = 20,
     ) -> list[Query]:
-        """List spørringer med valgfri filtrering."""
+        """
+        List spørringer med valgfri filtrering.
+
+        Args:
+            category: Filtrer på én kategori (bakoverkompatibel)
+            categories: Filtrer på flere kategorier (OR)
+            exclude_categories: Ekskluder kategorier (NOT IN)
+            tag: Filtrer på tag
+            limit: Maks antall resultater (default 20)
+        """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
 
@@ -253,9 +264,22 @@ class KnowledgeBase:
                 """
 
             conditions = []
+
+            # Støtt både enkelt category og liste med categories
             if category:
-                conditions.append("q.category = ?")
+                conditions.append("LOWER(q.category) = LOWER(?)")
                 params.append(category)
+            elif categories:
+                placeholders = ", ".join("?" for _ in categories)
+                conditions.append(f"LOWER(q.category) IN ({placeholders})")
+                params.extend([c.lower() for c in categories])
+
+            # Ekskluder kategorier
+            if exclude_categories:
+                placeholders = ", ".join("?" for _ in exclude_categories)
+                conditions.append(f"LOWER(q.category) NOT IN ({placeholders})")
+                params.extend([c.lower() for c in exclude_categories])
+
             if tag:
                 conditions.append("t.name = ?")
                 params.append(tag)
@@ -263,7 +287,7 @@ class KnowledgeBase:
             if conditions:
                 sql += " WHERE " + " AND ".join(conditions)
 
-            sql += " ORDER BY q.id LIMIT ?"
+            sql += " ORDER BY q.id DESC LIMIT ?"
             params.append(limit)
 
             rows = conn.execute(sql, params).fetchall()

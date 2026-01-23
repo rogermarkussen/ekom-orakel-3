@@ -14,7 +14,7 @@ Du er en autonom dataanalytiker. Din jobb er å besvare brukerens spørsmål om 
 6. **Lagre scripts.** Alle scripts lagres i `uttrekk/YYYY-MM-DD/`.
 7. **Kjør med uv.** Bruk alltid `uv run python script.py`.
 8. **HC/HP kun for fiber.** Spør BARE om HC/HP-filter når fiber er inkludert i uttrekket.
-9. **Lær av feil.** Korreksjoner lagres i SQLite (`lib/knowledge.db`) og valideres automatisk via `validate_pre_execution()`.
+9. **Lær av feil automatisk.** Når en query feiler og du må korrigere den, legg UMIDDELBART til en correction i SQLite via `kb.add_correction()`. Ikke vent på at brukeren ber om det.
 10. **Ikke logg underveis.** Samle opp og logg alt når brukeren kjører `/loggpush`.
 11. **Spør om verifisering.** Etter hvert svar, spør: "Er resultatet korrekt?" Når bekreftet, gi påminnelse: "Husk `/loggpush` for å lagre sesjonen."
 12. **Fylkesvis fordeling = tabell først.** Tabell med Fylke sortert alfabetisk, NASJONALT nederst.
@@ -219,10 +219,17 @@ Bruk `validate_pre_execution(sql)` for å fange kjente feil FØR kjøring:
 ### Ved feil
 
 1. **Rett feilen** og fortsett
-2. **Husk feilen** for logging ved `/loggpush`
-3. **Ikke logg underveis**
-
-Ved `/loggpush`: lagre i SQLite Knowledge Base med pattern for fremtidig matching.
+2. **Legg til correction UMIDDELBART** (ikke vent på `/loggpush`):
+   ```python
+   kb = KnowledgeBase()
+   kb.add_correction(
+       context='Kort beskrivelse av kontekst',
+       error='Feilmeldingen',
+       solution='Hvordan løse det',
+       pattern=r'regex for å matche lignende feil'
+   )
+   ```
+3. Korreksjoner fanges automatisk av `validate_pre_execution()`
 
 ---
 

@@ -1,24 +1,51 @@
 # List historiske spørringer
 
-Vis alle verifiserte spørringer fra kunnskapsbasen, eller kjør en spesifikk spørring.
+Vis verifiserte spørringer fra kunnskapsbasen, eller kjør en spesifikk spørring.
 
 ## Bruk
 
-- `/listhist` - Vis alle spørringer som tabell
+- `/listhist` - Vis siste 20 spørringer
 - `/listhist 3` - Kjør spørring nummer 3
 - `/listhist fiber` - Søk etter spørringer om fiber
-- `/listhist --category Dekning` - Filtrer på kategori
+- `/listhist filter=ekom` - Vis kun Ekom-spørringer (siste 20)
+- `/listhist filter=konkurranse, historikk` - Vis flere kategorier
+- `/listhist filter=!ekom` - Vis alt utenom Ekom
 
 ## Instruksjoner
 
-### Uten argument: Vis indeks
+### Uten argument: Vis siste 20
 
-**RASK METODE:** Les `lib/knowledge/INDEX.md` direkte med Read-verktøyet:
-```
-Read lib/knowledge/INDEX.md
+Kjør Python for å hente siste 20 spørringer:
+```python
+from library import KnowledgeBase
+kb = KnowledgeBase()
+queries = kb.list_queries(limit=20)
 ```
 
-Vis innholdet til brukeren. Ikke kjør Python for enkel indeksvisning.
+Vis som tabell med kolonner: #, Kategori, Beskrivelse (trunkert til 45 tegn), Verifisert.
+
+### Med filter: Filtrer på kategori
+
+Parse filter-argumentet og kall `list_queries()`:
+
+```python
+from library import KnowledgeBase
+kb = KnowledgeBase()
+
+# filter=ekom → én kategori
+queries = kb.list_queries(categories=["ekom"])
+
+# filter=konkurranse, historikk → flere kategorier (OR)
+queries = kb.list_queries(categories=["konkurranse", "historikk"])
+
+# filter=!ekom → ekskluder kategori
+queries = kb.list_queries(exclude_categories=["ekom"])
+
+# filter=!ekom, !dekning → ekskluder flere
+queries = kb.list_queries(exclude_categories=["ekom", "dekning"])
+```
+
+Vis som tabell. Filteret begrenser også til siste 20.
 
 ### Med nummer: Kjør spørring N
 
@@ -62,21 +89,27 @@ Vis innholdet til brukeren. Ikke kjør Python for enkel indeksvisning.
 
 ```
 /listhist
-→ Viser tabell med alle 12 spørringer
+→ Viser siste 20 spørringer (nyeste først)
 
 /listhist 7
 → Kjører spørring 7 (Nasjonal teknologidekning 2016-2024)
 
+/listhist filter=ekom
+→ Viser kun Ekom-spørringer (siste 20)
+
+/listhist filter=konkurranse, historikk
+→ Viser Konkurranse og Historikk (siste 20)
+
+/listhist filter=!ekom
+→ Viser alt utenom Ekom (siste 20)
+
 /listhist fiber spredtbygd
 → Søker og finner Q:3, Q:6 som handler om fiber i spredtbygd
-
-/listhist --category Konkurranse
-→ Viser kun spørringer i kategorien "Konkurranse"
 ```
 
 ## Viktig
 
-- **Enkel visning:** Les `lib/knowledge/INDEX.md` direkte (raskest)
-- **Med argument:** Bruk Python for å hente/kjøre spesifikk spørring
+- **Default:** Siste 20 spørringer, nyeste først
+- **Filter:** Case-insensitive, komma-separert for flere kategorier
+- **Negasjon:** Bruk `!` foran kategori for å ekskludere
 - Ved søk: utvid med synonymer (rural→spredtbygd, ftth→fiber)
-- INDEX.md oppdateres automatisk ved `/loggpush`
