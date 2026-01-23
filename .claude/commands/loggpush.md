@@ -7,13 +7,45 @@ Logg alle verifiserte spørringer og korreksjoner fra sesjonen, deretter commit 
 Gå gjennom samtalen og identifiser:
 
 1. **Verifiserte spørringer** - DuckDB-spørringer der brukeren bekreftet at resultatet var korrekt
-   - Legg disse til i QUERY_LOG.md under "## Logg"
-   - **VIKTIG:** Oppdater også indeks-tabellen øverst i filen!
+   - Legg disse til i QUERY_LOG.md
+   - **VIKTIG:** Oppdater både indeks-tabellen OG logg-seksjonen!
 
 2. **Korreksjoner** - Feil som ble gjort og rettet (f.eks. exit code 1, feil resultat)
    - Legg disse til i CORRECTIONS.md
 
 Ikke logg noe som allerede er logget tidligere i sesjonen.
+
+### Format for nye spørringer i QUERY_LOG.md
+
+**1. Oppdater indeksen** (øverst i filen):
+```markdown
+| N | Kategori | Kort beskrivelse | YYYY-MM-DD |
+```
+
+**2. Legg til spørringen** (før `<!-- LOGG-SLUTT -->`):
+```markdown
+<!-- Q:N -->
+### Kategori: Beskrivelse
+
+**Spørsmål:** "Brukerens spørsmål"
+**Verifisert:** YYYY-MM-DD
+**Promotert:** Nei
+
+​```sql
+-- SQL-spørringen
+SELECT ...
+​```
+
+**Resultat:** Kort oppsummering
+**Notater:** Viktige detaljer
+
+---
+```
+
+**VIKTIG:**
+- Markøren `<!-- Q:N -->` MÅ være på egen linje rett før `###`
+- N må matche nummeret i indeksen
+- Nye spørringer legges til rett FØR `<!-- LOGG-SLUTT -->`
 
 ## Steg 2: Analyser endringene
 

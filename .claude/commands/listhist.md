@@ -23,23 +23,33 @@ Indeksen har formatet:
 ...
 ```
 
-### Med argument: Kjør spørring
+### Med argument: Kjør spørring N
 
-1. Les QUERY_LOG.md og finn spørring nummer N under "## Logg"
-2. Spørringene er nummerert i rekkefølge (### er spørring-overskrift)
-3. Kjør SQL-spørringen med DuckDB
-4. Vis resultatet (husk regel 12: tabell først for fylkesfordeling)
+**Effektiv navigering med markører:**
 
-## Ved /loggpush - oppdater indeksen
+1. Bruk Grep for å finne linjenummeret til markøren `<!-- Q:N -->`:
+   ```bash
+   grep -n "<!-- Q:N -->" QUERY_LOG.md
+   ```
 
-Når nye spørringer legges til i QUERY_LOG.md, **må indeksen øverst også oppdateres**:
+2. Les ~40 linjer fra det linjenummeret med Read-verktøyet (offset + limit)
 
-1. Legg til ny rad i indeks-tabellen
-2. Bruk neste ledige nummer
-3. Hold indeksen synkronisert med logg-seksjonen
+3. Finn SQL-spørringen i ```sql ... ``` blokken
+
+4. Kjør SQL-spørringen med DuckDB
+
+5. Vis resultatet (husk regel 12: tabell først for fylkesfordeling)
+
+**Eksempel for spørring 7:**
+```
+grep -n "<!-- Q:7 -->" QUERY_LOG.md  # → f.eks. linje 365
+Read QUERY_LOG.md med offset=365, limit=40
+```
 
 ## Viktig
 
 - Les kun toppen av filen for `/listhist` uten argument (effektivitet)
+- Bruk markører `<!-- Q:N -->` for å navigere direkte til spørringer
 - Indeksen er sannhetskilden for oversikten
-- Marker `<!-- INDEKS-SLUTT -->` viser hvor indeksen slutter
+- `<!-- INDEKS-SLUTT -->` markerer hvor indeksen slutter
+- `<!-- LOGG-SLUTT -->` markerer hvor nye spørringer skal legges til

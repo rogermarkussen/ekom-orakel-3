@@ -25,28 +25,9 @@ Denne filen logger DuckDB-spørringer som brukeren har bekreftet gir korrekte re
 
 ---
 
-## Format
-
-```
-## Kategori: Kort beskrivelse
-
-**Spørsmål:** Brukerens opprinnelige spørsmål
-**Verifisert:** YYYY-MM-DD
-**Promotert:** Nei
-
-​```sql
--- SQL-spørringen som ga korrekt svar
-SELECT ...
-​```
-
-**Resultat:** Kort oppsummering av hva spørringen returnerte
-**Notater:** Eventuelle viktige detaljer om tolkning eller begrensninger
-```
-
----
-
 ## Logg
 
+<!-- Q:1 -->
 ### Ekom: Kontantkort-utvikling over tid
 
 **Spørsmål:** "Gi meg utviklingen av kontantkort fra 2018 - 2024 på helårsbasis"
@@ -75,6 +56,7 @@ ORDER BY ar
 
 ---
 
+<!-- Q:2 -->
 ### Abonnement: Fordeling etter adressetype
 
 **Spørsmål:** "Kan du gi meg antall ab som du finner på adresser med hus"
@@ -107,6 +89,7 @@ ORDER BY antall_ab DESC
 
 ---
 
+<!-- Q:3 -->
 ### Dekning: Fastbredbånd per hastighetsklasse per fylke
 
 **Spørsmål:** "gi meg nå en tabell som har fylker og nasjonalt i første kolonne og de andre kolonnene skal være hastighet 30, 100, 500, 1000. Dette skal være basert på dekningen for alle tek og det skal være basert på husstander"
@@ -166,6 +149,9 @@ ORDER BY CASE WHEN Fylke = 'NASJONALT' THEN 1 ELSE 0 END, Fylke
 **Resultat:** Nasjonal dekning: 30 Mbit 99.7%, 100 Mbit 99.1%, 500 Mbit 97.1%, 1000 Mbit 96.2%. Oslo høyest, Nordland lavest.
 **Notater:** Bruker MAX(ned) per adresse for å finne beste tilgjengelige hastighet. Hastigheter i kbps (30 Mbit = 30000 kbps).
 
+---
+
+<!-- Q:4 -->
 ### Dekning: Alle teknologier per fylke (fbb + mob)
 
 **Spørsmål:** "Kan du gi meg den fylkesfordelte dekning på alle teknologier (inkludert mob) - en tek pr kolonne - basert på husstander"
@@ -242,6 +228,7 @@ ORDER BY CASE WHEN Fylke = 'NASJONALT' THEN 1 ELSE 0 END, Fylke
 
 ---
 
+<!-- Q:5 -->
 ### Konkurranse: Fiberdekning fordelt på antall tilbydere per fylke
 
 **Spørsmål:** "Gi meg en fylkesvis fordeling av dekningen for de som har dekning fra flere tilbydere på fiber. Jeg ønsker å vite andelen med kun 1, 2 og 3+. hus"
@@ -315,6 +302,7 @@ ORDER BY CASE WHEN Fylke = 'NASJONALT' THEN 1 ELSE 0 END, Fylke
 
 ---
 
+<!-- Q:6 -->
 ### Dekning: Husstander med både kabel og fiber-HC
 
 **Spørsmål:** "gi meg fylkesfordelt dekning på adresser med både kabel og fiber-hc. hus"
@@ -374,6 +362,7 @@ ORDER BY CASE WHEN Fylke = 'NASJONALT' THEN 1 ELSE 0 END, Fylke
 
 ---
 
+<!-- Q:7 -->
 ### Historikk: Nasjonal teknologidekning 2016-2024
 
 **Spørsmål:** "Kan du gi meg den nasjonale dekningen for alle teknologier fra 2016 - 2024"
@@ -400,6 +389,7 @@ ORDER BY ar
 
 ---
 
+<!-- Q:8 -->
 ### Konkurranse: Fritidsboliger med fiber fra ≥2 tilbydere (Innlandet)
 
 **Spørsmål:** "Hvor stor andel av fritidsboliger i Innlandet fylke har tilbud om fiber fra minst to tilbydere"
@@ -428,6 +418,7 @@ WHERE a.fylke = 'INNLANDET'
 
 ---
 
+<!-- Q:9 -->
 ### Konkurranse: Dominerende fibertilbydere i Innlandet
 
 **Spørsmål:** "Hvilke tilbydere er det som dominerer i Innlandet"
@@ -454,6 +445,7 @@ LIMIT 15
 
 ---
 
+<!-- Q:10 -->
 ### Tilbydere: fbb-tilbydere uten ab-rapportering 2023
 
 **Spørsmål:** "List opp alle tilbydere som har levert data på fast bredbånd (fbb), men som ikke har rapportert ab på adressenivå" (2023)
@@ -479,6 +471,7 @@ ORDER BY f.tilb
 
 ---
 
+<!-- Q:11 -->
 ### Tilbydere: fbb-tilbydere uten ab-rapportering 2024
 
 **Spørsmål:** "Kan du gjøre det samme for 2024" (tilbydere med fbb men ikke ab)
@@ -504,6 +497,7 @@ ORDER BY f.tilb
 
 ---
 
+<!-- Q:12 -->
 ### Tilbydere: fbb-tilbydere uten ab-rapportering 2022
 
 **Spørsmål:** "Kan du se på 2022 også" (tilbydere med fbb men ikke ab)
@@ -529,31 +523,4 @@ ORDER BY f.tilb
 
 ---
 
-<!--
-Eksempel på fremtidig loggføring:
-
-## Dekning: Fiberdekning per fylke
-
-**Spørsmål:** "Hvor mange husstander har fiber i hvert fylke?"
-**Verifisert:** 2026-01-19
-**Promotert:** Ja - finnes i DuckDB Query Patterns
-
-```sql
-SELECT
-    a.fylke,
-    SUM(CASE WHEN har_fiber THEN a.hus ELSE 0 END) as hus_fiber,
-    SUM(a.hus) as totalt_hus,
-    ROUND(SUM(CASE WHEN har_fiber THEN a.hus ELSE 0 END) * 100.0 / SUM(a.hus), 1) as prosent
-FROM (
-    SELECT a.adrid, a.fylke, a.hus,
-           EXISTS(SELECT 1 FROM 'lib/fbb.parquet' f
-                  WHERE f.adrid = a.adrid AND f.tek = 'fiber') as har_fiber
-    FROM 'lib/adr.parquet' a
-) a
-GROUP BY a.fylke
-ORDER BY prosent DESC
-```
-
-**Resultat:** 15 fylker med fiberdekning fra 87% til 97%
-**Notater:** Inkluderer både HC og HP. For kun HC, legg til `AND f.hc = true`
--->
+<!-- LOGG-SLUTT - Nye spørringer legges til over denne linjen -->
