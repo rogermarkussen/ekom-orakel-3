@@ -412,24 +412,36 @@ class KnowledgeBase:
 
     # ========== Backup/Export ==========
 
-    def export_json(self, output_dir: Optional[Path] = None) -> tuple[Path, Path]:
-        """Eksporter til JSON for backup."""
+    def export_json(self, output_dir: Optional[Path] = None) -> tuple[Path, Path, Path]:
+        """Eksporter til JSON og INDEX.md for backup."""
         output_dir = output_dir or BACKUP_DIR
         output_dir.mkdir(parents=True, exist_ok=True)
 
         queries_path = output_dir / "queries.json"
         corrections_path = output_dir / "corrections.json"
+        index_path = output_dir / "INDEX.md"
 
-        queries = [q.to_dict() for q in self.list_queries(limit=1000)]
+        queries = self.list_queries(limit=1000)
         corrections = [c.to_dict() for c in self.get_corrections(limit=1000)]
 
+        # JSON export
         with open(queries_path, "w", encoding="utf-8") as f:
-            json.dump(queries, f, ensure_ascii=False, indent=2)
+            json.dump([q.to_dict() for q in queries], f, ensure_ascii=False, indent=2)
 
         with open(corrections_path, "w", encoding="utf-8") as f:
             json.dump(corrections, f, ensure_ascii=False, indent=2)
 
-        return queries_path, corrections_path
+        # INDEX.md for rask lesing
+        lines = ["| # | Kategori | Beskrivelse | Verifisert |",
+                 "|---|----------|-------------|------------|"]
+        for q in queries:
+            desc = q.question[:45] + "..." if len(q.question) > 45 else q.question
+            lines.append(f"| {q.id} | {q.category} | {desc} | {q.verified_date} |")
+
+        with open(index_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+
+        return queries_path, corrections_path, index_path
 
     def import_json(self, queries_path: Path, corrections_path: Optional[Path] = None):
         """Importer fra JSON backup."""

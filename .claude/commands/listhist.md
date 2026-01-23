@@ -13,19 +13,12 @@ Vis alle verifiserte spørringer fra kunnskapsbasen, eller kjør en spesifikk sp
 
 ### Uten argument: Vis indeks
 
-1. Bruk KnowledgeBase for å liste spørringer:
-   ```python
-   from library import KnowledgeBase
-   kb = KnowledgeBase()
-   queries = kb.list_queries()
-   ```
+**RASK METODE:** Les `lib/knowledge/INDEX.md` direkte med Read-verktøyet:
+```
+Read lib/knowledge/INDEX.md
+```
 
-2. Formater som tabell:
-   ```
-   | # | Kategori | Beskrivelse | Tags | Verifisert |
-   |---|----------|-------------|------|------------|
-   | 1 | Ekom | Kontantkort-utvikling | ekom, kontantkort | 2026-01-19 |
-   ```
+Vis innholdet til brukeren. Ikke kjør Python for enkel indeksvisning.
 
 ### Med nummer: Kjør spørring N
 
@@ -83,7 +76,7 @@ Vis alle verifiserte spørringer fra kunnskapsbasen, eller kjør en spesifikk sp
 
 ## Viktig
 
-- Bruk SQLite knowledge base (`lib/knowledge.db`)
-- Fall tilbake til QUERY_LOG.md hvis database ikke finnes
+- **Enkel visning:** Les `lib/knowledge/INDEX.md` direkte (raskest)
+- **Med argument:** Bruk Python for å hente/kjøre spesifikk spørring
 - Ved søk: utvid med synonymer (rural→spredtbygd, ftth→fiber)
-- Indeksen i databasen er sannhetskilden
+- INDEX.md oppdateres automatisk ved `/loggpush`
