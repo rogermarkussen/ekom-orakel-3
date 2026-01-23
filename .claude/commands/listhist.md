@@ -27,12 +27,17 @@ Indeksen har formatet:
 
 **Effektiv navigering med markører:**
 
-1. Bruk Grep for å finne linjenummeret til markøren `<!-- Q:N -->`:
+1. Finn linjenummer for start og slutt av spørringen:
    ```bash
-   grep -n "<!-- Q:N -->" QUERY_LOG.md
+   grep -n "<!-- Q:" QUERY_LOG.md | grep -E "Q:N -->|Q:$((N+1)) -->|LOGG-SLUTT"
    ```
+   Dette gir deg:
+   - Linjenummer for `<!-- Q:N -->` (start)
+   - Linjenummer for `<!-- Q:N+1 -->` eller `<!-- LOGG-SLUTT -->` (slutt)
 
-2. Les ~40 linjer fra det linjenummeret med Read-verktøyet (offset + limit)
+2. Les fra startlinje til sluttlinje med Read-verktøyet:
+   - `offset` = startlinjenummer
+   - `limit` = sluttlinje - startlinje
 
 3. Finn SQL-spørringen i ```sql ... ``` blokken
 
@@ -41,15 +46,18 @@ Indeksen har formatet:
 5. Vis resultatet (husk regel 12: tabell først for fylkesfordeling)
 
 **Eksempel for spørring 7:**
-```
-grep -n "<!-- Q:7 -->" QUERY_LOG.md  # → f.eks. linje 365
-Read QUERY_LOG.md med offset=365, limit=40
+```bash
+grep -n "<!-- Q:" QUERY_LOG.md | grep -E "Q:7 -->|Q:8 -->|LOGG-SLUTT"
+# Output: 365:<!-- Q:7 -->
+#         392:<!-- Q:8 -->
+# Les linje 365-391 (offset=365, limit=27)
 ```
 
 ## Viktig
 
 - Les kun toppen av filen for `/listhist` uten argument (effektivitet)
 - Bruk markører `<!-- Q:N -->` for å navigere direkte til spørringer
+- Les alltid til neste markør for å få hele spørringen
 - Indeksen er sannhetskilden for oversikten
 - `<!-- INDEKS-SLUTT -->` markerer hvor indeksen slutter
-- `<!-- LOGG-SLUTT -->` markerer hvor nye spørringer skal legges til
+- `<!-- LOGG-SLUTT -->` markerer hvor logg-seksjonen slutter
