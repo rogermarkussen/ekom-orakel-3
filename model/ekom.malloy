@@ -1,0 +1,139 @@
+// Semantisk lag for ekom-orakel
+// Definerer forretningslogikk som deklarative modeller
+
+// ============================================================
+// Source: adr (Adresseregister) - hovedkilde
+// ============================================================
+source: adr is duckdb.table('lib/2024/adr.parquet') extend {
+  primary_key: adrid
+
+  dimension:
+    fylke_navn is fylke
+    kommune_navn is komnavn
+    er_tettsted is ertett
+    populasjon_type is pick 'tettsted' when ertett else 'spredtbygd'
+
+  measure:
+    antall_husstander is hus.sum()
+    antall_fritidsboliger is fritid.sum()
+    antall_adresser is count()
+}
+
+// ============================================================
+// Source: fiber_adresser (Unike adresser med fiberdekning)
+// ============================================================
+source: fiber_adresser is duckdb.sql("""
+  SELECT DISTINCT adrid
+  FROM 'lib/2024/fbb.parquet'
+  WHERE tek = 'fiber'
+""") extend {
+  primary_key: adrid
+}
+
+// ============================================================
+// Source: fiber_hc_adresser (Unike adresser med fiber HC)
+// ============================================================
+source: fiber_hc_adresser is duckdb.sql("""
+  SELECT DISTINCT adrid
+  FROM 'lib/2024/fbb.parquet'
+  WHERE tek = 'fiber' AND hc = true
+""") extend {
+  primary_key: adrid
+}
+
+// ============================================================
+// Source: hoyhast_adresser (Unike adresser med >=100 Mbit)
+// ============================================================
+source: hoyhast_adresser is duckdb.sql("""
+  SELECT DISTINCT adrid
+  FROM 'lib/2024/fbb.parquet'
+  WHERE ned >= 100000
+""") extend {
+  primary_key: adrid
+}
+
+// ============================================================
+// Source: dekning_fiber
+// Kombinerer adr med fiber-adresser for fiberdekning
+// ============================================================
+source: dekning_fiber is adr extend {
+  join_one: fiber_adresser on adrid = fiber_adresser.adrid
+
+  dimension:
+    har_fiber is fiber_adresser.adrid != null
+
+  measure:
+    hus_fiber is hus.sum() { where: har_fiber }
+    fiber_pct is round(hus_fiber / antall_husstander * 100, 1)
+
+  view: per_fylke is {
+    group_by: fylke_navn
+    aggregate: hus_fiber, antall_husstander, fiber_pct
+    order_by: fylke_navn
+  }
+
+  view: spredtbygd_fylke is {
+    where: populasjon_type = 'spredtbygd'
+    group_by: fylke_navn
+    aggregate: hus_fiber, antall_husstander, fiber_pct
+    order_by: fylke_navn
+  }
+
+  view: tettsted_fylke is {
+    where: populasjon_type = 'tettsted'
+    group_by: fylke_navn
+    aggregate: hus_fiber, antall_husstander, fiber_pct
+    order_by: fylke_navn
+  }
+}
+
+// ============================================================
+// Source: dekning_fiber_hc
+// Kombinerer adr med fiber HC-adresser
+// ============================================================
+source: dekning_fiber_hc is adr extend {
+  join_one: fiber_hc_adresser on adrid = fiber_hc_adresser.adrid
+
+  dimension:
+    har_fiber_hc is fiber_hc_adresser.adrid != null
+
+  measure:
+    hus_fiber_hc is hus.sum() { where: har_fiber_hc }
+    fiber_hc_pct is round(hus_fiber_hc / antall_husstander * 100, 1)
+
+  view: per_fylke is {
+    group_by: fylke_navn
+    aggregate: hus_fiber_hc, antall_husstander, fiber_hc_pct
+    order_by: fylke_navn
+  }
+}
+
+// ============================================================
+// Source: dekning_hoyhast
+// Kombinerer adr med høyhastighets-adresser (>=100 Mbit)
+// ============================================================
+source: dekning_hoyhast is adr extend {
+  join_one: hoyhast_adresser on adrid = hoyhast_adresser.adrid
+
+  dimension:
+    har_hoyhast is hoyhast_adresser.adrid != null
+
+  measure:
+    hus_hoyhast is hus.sum() { where: har_hoyhast }
+    hoyhast_pct is round(hus_hoyhast / antall_husstander * 100, 1)
+
+  view: per_fylke is {
+    group_by: fylke_navn
+    aggregate: hus_hoyhast, antall_husstander, hoyhast_pct
+    order_by: fylke_navn
+  }
+}
+
+// ============================================================
+// Named queries - Kjørbare spørringer
+// ============================================================
+query: fiber_fylke is dekning_fiber -> per_fylke
+query: fiber_spredtbygd is dekning_fiber -> spredtbygd_fylke
+query: fiber_tettsted is dekning_fiber -> tettsted_fylke
+query: fiber_hc_fylke is dekning_fiber_hc -> per_fylke
+query: hoyhastighet_fylke is dekning_hoyhast -> per_fylke
