@@ -32,6 +32,7 @@ from typing import Literal, Optional
 import polars as pl
 
 from library.cache import get_db
+from library.knowledge import KnowledgeBase
 
 
 # Tilgjengelige fylker for mobilabonnement (fra 2025-Halvår)
@@ -97,6 +98,9 @@ class EkomQuery:
     include_datakom: bool = True  # Auto for FBB Bedrift
     include_grossist: bool = False
 
+    # Forretningsdefinisjon
+    definition: Optional[str] = None  # Navn på forretningsdefinisjon fra KB
+
     def _should_include_datakom(self) -> bool:
         """Sjekk om Datakommunikasjon skal inkluderes automatisk."""
         if not self.include_datakom:
@@ -112,6 +116,22 @@ class EkomQuery:
             return False
 
         return True
+
+    def _get_definition_filters(self) -> dict:
+        """Hent filtre fra forretningsdefinisjon."""
+        if not self.definition:
+            return {}
+
+        kb = KnowledgeBase()
+        defn = kb.get_definition(self.definition)
+        if not defn:
+            return {}
+
+        # Sjekk at definisjonen gjelder for ekom
+        if defn.applies_to not in ("ekom", "both"):
+            return {}
+
+        return defn.filters
 
     def _is_fylke_query(self) -> bool:
         """Sjekk om dette er en fylkesfordeling-query."""
@@ -167,22 +187,41 @@ class EkomQuery:
 
     def _build_where_clause(self) -> str:
         """Bygg komplett WHERE-klausul."""
+        # Hent definisjonsfiltre først
+        def_filters = self._get_definition_filters()
+
+        # Bruk definisjonens tp/sk hvis de finnes, ellers standard
+        tp_filter = f"tp = '{def_filters['tp']}'" if 'tp' in def_filters else self._get_tp_filter()
+        sk_filter = f"sk = '{def_filters['sk']}'" if 'sk' in def_filters else self._get_sk_filter()
+
         conditions = [
             self._build_hk_filter(),
             f"hg = '{self.hg}'",
-            self._get_tp_filter(),
-            self._get_sk_filter(),
+            tp_filter,
+            sk_filter,
         ]
 
-        # Valgfrie filtre
-        if self.dk:
-            conditions.append(f"dk = '{self.dk}'")
+        # Ekskluder hk-verdier fra definisjon (f.eks. hk_not: "TV-tjenester")
+        if 'hk_not' in def_filters:
+            hk_not = def_filters['hk_not']
+            if isinstance(hk_not, list):
+                hk_not_str = ", ".join(f"'{h}'" for h in hk_not)
+                conditions.append(f"hk NOT IN ({hk_not_str})")
+            else:
+                conditions.append(f"hk != '{hk_not}'")
 
-        if self.ms:
-            conditions.append(f"ms = '{self.ms}'")
+        # Valgfrie filtre (eksplisitte parametere overskriver definisjon)
+        dk = self.dk or def_filters.get('dk')
+        if dk:
+            conditions.append(f"dk = '{dk}'")
 
-        if self.tek:
-            conditions.append(f"tek = '{self.tek}'")
+        ms = self.ms or def_filters.get('ms')
+        if ms:
+            conditions.append(f"ms = '{ms}'")
+
+        tek = self.tek or def_filters.get('tek')
+        if tek:
+            conditions.append(f"tek = '{tek}'")
 
         if self.tilbyder:
             conditions.append(f"fusnavn = '{self.tilbyder}'")

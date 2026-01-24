@@ -315,13 +315,15 @@ ORDER BY CASE WHEN Fylke = 'NASJONALT' THEN 1 ELSE 0 END, Fylke
 @dataclass
 class HistoricalQuery:
     """
-    Builder for historiske trender.
+    Builder for historiske trender (teknologi).
+
+    Bruker dekning_tek.parquet med data fra 2013-2024.
     """
 
     start_year: int = 2016
     end_year: int = 2024
     teknologi: list[str] = field(default_factory=lambda: ["fiber"])
-    geo: str = "totalt"  # "totalt", "tettsted", "spredtbygd"
+    geo: str = "totalt"  # "totalt", "tettbygd", "spredtbygd"
     fylke: str = "NASJONALT"
 
     def to_sql(self) -> str:
@@ -346,6 +348,63 @@ ORDER BY ar, tek
         return get_db().execute(self.to_sql())
 
 
+@dataclass
+class HistoricalSpeedQuery:
+    """
+    Builder for historiske hastighetsdata (dekning_hast.parquet).
+
+    Støtter år 2010-2024 med hastighetsklasser (ned/opp i Mbit/s).
+
+    Attributes:
+        start_year: Første år (default 2010)
+        end_year: Siste år (default 2024)
+        ned: Nedlastingshastighet i Mbit/s (default 100)
+        opp: Opplastingshastighet i Mbit/s (default 100)
+        geo: "totalt", "tettbygd", eller "spredtbygd"
+        fylke: Fylkesnavn eller "NASJONALT"
+    """
+
+    start_year: int = 2010
+    end_year: int = 2024
+    ned: int = 100  # Nedlastingshastighet i Mbit/s
+    opp: int = 100  # Opplastingshastighet i Mbit/s
+    geo: str = "totalt"  # "totalt", "tettbygd", "spredtbygd"
+    fylke: str = "NASJONALT"
+
+    def to_sql(self) -> str:
+        """Generer SQL for historisk hastighetsdata."""
+        return f"""
+SELECT
+    ar as år,
+    ROUND(dekning * 100, 1) as prosent
+FROM 'lib/dekning_hast.parquet'
+WHERE fylke = '{self.fylke}'
+  AND geo = '{self.geo}'
+  AND ned = {self.ned}
+  AND opp = {self.opp}
+  AND ar BETWEEN {self.start_year} AND {self.end_year}
+ORDER BY ar
+"""
+
+    def execute(self) -> pl.DataFrame:
+        """Kjør spørringen og returner resultat."""
+        return get_db().execute(self.to_sql())
+
+    def describe(self) -> str:
+        """Beskriv spørringen på norsk."""
+        parts = [f"Hastighet ≥{self.ned}/{self.opp} Mbit/s"]
+
+        if self.geo != "totalt":
+            parts.append(f"i {self.geo}")
+
+        if self.fylke != "NASJONALT":
+            parts.append(f"for {self.fylke}")
+
+        parts.append(f"({self.start_year}-{self.end_year})")
+
+        return " ".join(parts)
+
+
 def quick_coverage(
     teknologi: str | list[str],
     year: int = 2024,
@@ -367,6 +426,173 @@ def quick_coverage(
         teknologi=teknologi,
         populasjon=populasjon,
         kun_hc=True if hc_only else None,
+    )
+
+    return query.execute()
+
+
+# --- Abonnementspørringer (ab.parquet) ---
+
+
+SubscriptionGroupByType = Literal["nasjonal", "fylke", "kommune", "tilbyder"]
+
+
+@dataclass
+class SubscriptionQuery:
+    """
+    Query builder for ab.parquet - teller rader (abonnementer), ikke husstander.
+
+    VIKTIG: ab.parquet skal IKKE joines med adr - bruk fylke/komnavn direkte.
+    Tell COUNT(*) rader, IKKE SUM(hus).
+
+    Attributes:
+        year: Dataår (2022, 2023, 2024)
+        teknologi: Liste med teknologier å inkludere
+        privat: True=privat, False=bedrift, None=begge
+        kol: True=MDU (kollektiv), False=SDU (enkeltbolig), None=begge
+        kun_koblet: Kun adresser med adrid > 0
+        group_by: "nasjonal", "fylke", "kommune", eller "tilbyder"
+        tilbydere: Liste med spesifikke tilbydere
+        fylker: Liste med spesifikke fylker
+    """
+
+    year: int = 2024
+    teknologi: list[str] = field(default_factory=list)
+    privat: Optional[bool] = None  # True=privat, False=bedrift, None=begge
+    kol: Optional[bool] = None  # True=MDU, False=SDU, None=begge
+    kun_koblet: bool = False  # Kun adrid > 0
+    group_by: SubscriptionGroupByType = "fylke"
+    tilbydere: list[str] = field(default_factory=list)
+    fylker: list[str] = field(default_factory=list)
+
+    def _build_filter(self) -> str:
+        """Bygg WHERE-klausul."""
+        conditions = []
+
+        if self.teknologi:
+            tek_list = ", ".join(f"'{t}'" for t in self.teknologi)
+            conditions.append(f"tek IN ({tek_list})")
+
+        if self.privat is not None:
+            conditions.append(f"privat = {'true' if self.privat else 'false'}")
+
+        if self.kol is not None:
+            conditions.append(f"kol = {'true' if self.kol else 'false'}")
+
+        if self.kun_koblet:
+            conditions.append("adrid > 0")
+
+        if self.tilbydere:
+            tilb_list = ", ".join(f"'{t}'" for t in self.tilbydere)
+            conditions.append(f"tilb IN ({tilb_list})")
+
+        if self.fylker:
+            fylke_list = ", ".join(f"'{f.upper()}'" for f in self.fylker)
+            conditions.append(f"fylke IN ({fylke_list})")
+
+        return " AND ".join(conditions) if conditions else "1=1"
+
+    def _build_group_col(self) -> str:
+        """Hent kolonne for gruppering."""
+        return {
+            "nasjonal": "'NASJONALT'",
+            "fylke": "fylke",
+            "kommune": "komnavn",
+            "tilbyder": "tilb",
+        }[self.group_by]
+
+    def to_sql(self) -> str:
+        """Generer SQL for spørringen."""
+        ab_table = f"'lib/{self.year}/ab.parquet'"
+        filter_clause = self._build_filter()
+        group_col = self._build_group_col()
+
+        if self.group_by == "nasjonal":
+            return f"""
+SELECT
+    'NASJONALT' as gruppe,
+    COUNT(*) as antall_ab
+FROM {ab_table}
+WHERE {filter_clause}
+"""
+        else:
+            return f"""
+SELECT * FROM (
+    SELECT
+        {group_col} as {self.group_by},
+        COUNT(*) as antall_ab,
+        0 as sort_order
+    FROM {ab_table}
+    WHERE {filter_clause}
+    GROUP BY {group_col}
+
+    UNION ALL
+
+    SELECT
+        'NASJONALT' as {self.group_by},
+        COUNT(*) as antall_ab,
+        1 as sort_order
+    FROM {ab_table}
+    WHERE {filter_clause}
+) sub
+ORDER BY sort_order, {self.group_by}
+"""
+
+    def execute(self) -> pl.DataFrame:
+        """Kjør spørringen og returner resultat."""
+        sql = self.to_sql()
+        result = get_db().execute(sql)
+        # Fjern intern sort_order kolonne hvis den finnes
+        if "sort_order" in result.columns:
+            result = result.drop("sort_order")
+        return result
+
+    def describe(self) -> str:
+        """Beskriv spørringen på norsk."""
+        parts = ["Abonnementer"]
+
+        if self.teknologi:
+            parts.append(f"({'/'.join(self.teknologi)})")
+
+        if self.privat is True:
+            parts.append("privat")
+        elif self.privat is False:
+            parts.append("bedrift")
+
+        if self.kol is True:
+            parts.append("kollektiv (MDU)")
+        elif self.kol is False:
+            parts.append("enkeltbolig (SDU)")
+
+        parts.append(f"per {self.group_by}")
+        parts.append(f"({self.year})")
+
+        return " ".join(parts)
+
+
+def quick_ab(
+    teknologi: str | list[str] | None = None,
+    year: int = 2024,
+    privat: Optional[bool] = None,
+    group_by: SubscriptionGroupByType = "fylke",
+) -> pl.DataFrame:
+    """
+    Rask abonnementssjekk.
+
+    Eksempel:
+        quick_ab("fiber")
+        quick_ab("fiber", privat=True)
+        quick_ab(group_by="tilbyder")
+    """
+    tek_list = []
+    if teknologi:
+        tek_list = [teknologi] if isinstance(teknologi, str) else teknologi
+
+    query = SubscriptionQuery(
+        year=year,
+        teknologi=tek_list,
+        privat=privat,
+        group_by=group_by,
     )
 
     return query.execute()

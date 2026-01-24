@@ -98,6 +98,28 @@ class DuckDBCache:
                     SELECT * FROM read_parquet('{path}')
                 """)
 
+        # 2021 aggregerte filer
+        year_2021_dir = LIB_DIR / "2021"
+        if year_2021_dir.exists():
+            for agg_file in ["dekning_fylke", "dekning_kommune"]:
+                path = year_2021_dir / f"{agg_file}.parquet"
+                if path.exists():
+                    view_name = f"{agg_file}_2021"
+                    self.conn.execute(f"""
+                        CREATE OR REPLACE VIEW {view_name} AS
+                        SELECT * FROM read_parquet('{path}')
+                    """)
+
+        # Legacy historiske filer
+        legacy_dir = LIB_DIR / "legacy"
+        if legacy_dir.exists():
+            for path in legacy_dir.glob("*.parquet"):
+                view_name = path.stem  # f.eks. "historikk_tek_nasjonalt"
+                self.conn.execute(f"""
+                    CREATE OR REPLACE VIEW {view_name} AS
+                    SELECT * FROM read_parquet('{path}')
+                """)
+
     def execute(self, sql: str) -> pl.DataFrame:
         """Kjør SQL og returner Polars DataFrame."""
         result = self.conn.execute(sql).fetchdf()

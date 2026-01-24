@@ -267,3 +267,43 @@ def extract_keywords(text: str) -> list[str]:
             keywords.append(canonical)
 
     return list(set(keywords))
+
+
+def detect_definitions(text: str) -> list[str]:
+    """
+    Finn forretningsdefinisjoner i tekst.
+
+    Matcher både "samlet_omsetning" og "samlet omsetning" varianter.
+
+    Args:
+        text: Brukerens input-tekst
+
+    Returns:
+        Liste med matchende definisjonsnavn
+
+    Eksempel:
+        >>> detect_definitions("Hva er samlet omsetning for fiber i 2024?")
+        ['samlet_omsetning']
+    """
+    kb = KnowledgeBase()
+    definitions = kb.list_definitions()
+
+    if not definitions:
+        return []
+
+    text_lower = text.lower()
+    found = []
+
+    for defn in definitions:
+        # Match både "samlet_omsetning" og "samlet omsetning"
+        variants = [
+            defn.name.lower(),
+            defn.name.replace("_", " ").lower(),
+        ]
+
+        for variant in variants:
+            if variant in text_lower:
+                found.append(defn.name)
+                break  # Ikke legg til samme definisjon flere ganger
+
+    return found

@@ -32,6 +32,10 @@ from library.filters import (
     filter_populasjon,
     filter_teknologi,
     filter_tilbyder,
+    # ab.parquet-spesifikke filtre
+    filter_privat,
+    filter_kol,
+    filter_adrid_koblet,
 )
 from library.validation import (
     add_national_aggregate,
@@ -54,6 +58,7 @@ from library.knowledge import (
     KnowledgeBase,
     Query,
     Correction,
+    BusinessDefinition,
     SessionTracker,
     get_session,
 )
@@ -61,6 +66,7 @@ from library.query_matcher import (
     QueryMatcher,
     MatchResult,
     extract_keywords,
+    detect_definitions,
     DOMAIN_SYNONYMS,
 )
 from library.validators import (
@@ -81,7 +87,10 @@ from library.query_builder import (
     CoverageQuery,
     CompetitionQuery,
     HistoricalQuery,
+    HistoricalSpeedQuery,
+    SubscriptionQuery,
     quick_coverage,
+    quick_ab,
 )
 from library.ekom_query import (
     EkomQuery,
@@ -127,6 +136,10 @@ __all__ = [
     "filter_populasjon",
     "filter_hc",
     "filter_egen",
+    # ab.parquet-filtre
+    "filter_privat",
+    "filter_kol",
+    "filter_adrid_koblet",
     # Legacy validation
     "add_national_aggregate",
     "validate_extraction",
@@ -144,12 +157,14 @@ __all__ = [
     "KnowledgeBase",
     "Query",
     "Correction",
+    "BusinessDefinition",
     "SessionTracker",
     "get_session",
     # Query Matcher
     "QueryMatcher",
     "MatchResult",
     "extract_keywords",
+    "detect_definitions",
     "DOMAIN_SYNONYMS",
     # Validators
     "SQLValidator",
@@ -167,7 +182,10 @@ __all__ = [
     "CoverageQuery",
     "CompetitionQuery",
     "HistoricalQuery",
+    "HistoricalSpeedQuery",
+    "SubscriptionQuery",
     "quick_coverage",
+    "quick_ab",
     # Ekom Query Builder
     "EkomQuery",
     "quick_ekom",

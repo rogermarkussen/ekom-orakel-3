@@ -81,6 +81,29 @@ class Correction:
         }
 
 
+@dataclass
+class BusinessDefinition:
+    """Varig forretningsdefinisjon med automatiske filtre."""
+    id: int
+    name: str
+    description: str
+    filters: dict  # {"tp": "Sum", "hk_not": "TV-tjenester", "sk": "Sluttbruker"}
+    applies_to: str  # "ekom" | "coverage" | "both"
+    created_date: str
+    notes: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "filters": self.filters,
+            "applies_to": self.applies_to,
+            "created_date": self.created_date,
+            "notes": self.notes,
+        }
+
+
 class KnowledgeBase:
     """SQLite-basert kunnskapsbase med FTS5 søk."""
 
@@ -160,10 +183,24 @@ class KnowledgeBase:
                     VALUES (new.id, new.question, new.sql, new.result_summary, new.category, new.notes);
                 END;
 
+                -- Forretningsdefinisjoner (varige regler)
+                CREATE TABLE IF NOT EXISTS business_definitions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL,
+                    description TEXT NOT NULL,
+                    filters TEXT NOT NULL,
+                    applies_to TEXT NOT NULL,
+                    created_date TEXT NOT NULL,
+                    notes TEXT,
+                    created_at TEXT DEFAULT (datetime('now'))
+                );
+
                 -- Indekser
                 CREATE INDEX IF NOT EXISTS idx_queries_category ON queries(category);
                 CREATE INDEX IF NOT EXISTS idx_queries_verified ON queries(verified_date);
                 CREATE INDEX IF NOT EXISTS idx_corrections_pattern ON corrections(pattern);
+                CREATE INDEX IF NOT EXISTS idx_definitions_name ON business_definitions(name);
+                CREATE INDEX IF NOT EXISTS idx_definitions_applies ON business_definitions(applies_to);
             """)
 
     # ========== Query CRUD ==========
@@ -433,6 +470,159 @@ class KnowledgeBase:
                     continue
 
         return corrections
+
+    # ========== Business Definition CRUD ==========
+
+    def add_definition(
+        self,
+        name: str,
+        description: str,
+        filters: dict,
+        applies_to: str,
+        notes: Optional[str] = None,
+        created_date: Optional[str] = None,
+    ) -> int:
+        """
+        Legg til ny forretningsdefinisjon.
+
+        Args:
+            name: Unikt navn (f.eks. "samlet_omsetning")
+            description: Norsk forklaring
+            filters: Dict med filtre (f.eks. {"tp": "Sum", "hk_not": "TV-tjenester"})
+            applies_to: "ekom", "coverage", eller "both"
+            notes: Valgfrie notater
+
+        Returns:
+            ID for ny definisjon
+        """
+        if created_date is None:
+            created_date = datetime.now().strftime("%Y-%m-%d")
+
+        if applies_to not in ("ekom", "coverage", "both"):
+            raise ValueError(f"applies_to må være 'ekom', 'coverage' eller 'both', fikk '{applies_to}'")
+
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
+                INSERT INTO business_definitions (name, description, filters, applies_to, created_date, notes)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (name, description, json.dumps(filters), applies_to, created_date, notes))
+            return cursor.lastrowid
+
+    def get_definition(self, name: str) -> Optional[BusinessDefinition]:
+        """Hent definisjon med gitt navn."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM business_definitions WHERE name = ?", (name,)
+            ).fetchone()
+
+            if not row:
+                return None
+
+            return BusinessDefinition(
+                id=row["id"],
+                name=row["name"],
+                description=row["description"],
+                filters=json.loads(row["filters"]),
+                applies_to=row["applies_to"],
+                created_date=row["created_date"],
+                notes=row["notes"],
+            )
+
+    def list_definitions(self, applies_to: Optional[str] = None) -> list[BusinessDefinition]:
+        """
+        List alle definisjoner.
+
+        Args:
+            applies_to: Filtrer på type ("ekom", "coverage", "both")
+
+        Returns:
+            Liste med definisjoner
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+
+            if applies_to:
+                rows = conn.execute(
+                    "SELECT * FROM business_definitions WHERE applies_to = ? OR applies_to = 'both' ORDER BY name",
+                    (applies_to,)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM business_definitions ORDER BY name"
+                ).fetchall()
+
+            return [
+                BusinessDefinition(
+                    id=row["id"],
+                    name=row["name"],
+                    description=row["description"],
+                    filters=json.loads(row["filters"]),
+                    applies_to=row["applies_to"],
+                    created_date=row["created_date"],
+                    notes=row["notes"],
+                )
+                for row in rows
+            ]
+
+    def update_definition(
+        self,
+        name: str,
+        description: Optional[str] = None,
+        filters: Optional[dict] = None,
+        applies_to: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> bool:
+        """
+        Oppdater eksisterende definisjon.
+
+        Args:
+            name: Navn på definisjonen som skal oppdateres
+            description: Ny beskrivelse (valgfri)
+            filters: Nye filtre (valgfri)
+            applies_to: Ny type (valgfri)
+            notes: Nye notater (valgfri)
+
+        Returns:
+            True hvis oppdatert, False hvis ikke funnet
+        """
+        updates = []
+        params = []
+
+        if description is not None:
+            updates.append("description = ?")
+            params.append(description)
+        if filters is not None:
+            updates.append("filters = ?")
+            params.append(json.dumps(filters))
+        if applies_to is not None:
+            if applies_to not in ("ekom", "coverage", "both"):
+                raise ValueError(f"applies_to må være 'ekom', 'coverage' eller 'both'")
+            updates.append("applies_to = ?")
+            params.append(applies_to)
+        if notes is not None:
+            updates.append("notes = ?")
+            params.append(notes)
+
+        if not updates:
+            return False
+
+        params.append(name)
+
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                f"UPDATE business_definitions SET {', '.join(updates)} WHERE name = ?",
+                params
+            )
+            return cursor.rowcount > 0
+
+    def delete_definition(self, name: str) -> bool:
+        """Slett definisjon."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "DELETE FROM business_definitions WHERE name = ?", (name,)
+            )
+            return cursor.rowcount > 0
 
     # ========== Backup/Export ==========
 

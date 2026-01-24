@@ -106,3 +106,46 @@ def filter_egen(lf: pl.LazyFrame) -> pl.LazyFrame:
         LazyFrame med kun tilbydere som eier egen infrastruktur
     """
     return lf.filter(pl.col("egen") == True)  # noqa: E712
+
+
+# --- ab.parquet-spesifikke filtre ---
+
+
+def filter_privat(lf: pl.LazyFrame, privat: bool = True) -> pl.LazyFrame:
+    """
+    Filtrer ab på privat/bedrift.
+
+    Args:
+        lf: LazyFrame fra ab.parquet
+        privat: True for privatmarkedet, False for bedriftsmarkedet
+
+    Returns:
+        Filtrert LazyFrame
+    """
+    return lf.filter(pl.col("privat") == privat)
+
+
+def filter_kol(lf: pl.LazyFrame, kol: bool = True) -> pl.LazyFrame:
+    """
+    Filtrer ab på kollektiv (MDU) / enkeltbolig (SDU).
+
+    Args:
+        lf: LazyFrame fra ab.parquet
+        kol: True for kollektiv (flermannsbolig), False for enkeltbolig
+
+    Returns:
+        Filtrert LazyFrame
+    """
+    return lf.filter(pl.col("kol") == kol)
+
+
+def filter_adrid_koblet(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """
+    Filtrer ab til kun koblede adresser (adrid > 0).
+
+    Abonnementer med adrid = 0 er ikke koblet til en adresse.
+
+    Returns:
+        LazyFrame med kun koblede adresser
+    """
+    return lf.filter(pl.col("adrid") > 0)
