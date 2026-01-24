@@ -133,9 +133,45 @@ for issue in issues:
 3. Sjekk at resultatene gir mening (se sanity checks i CLAUDE.md)
 4. Vis resultatene til brukeren
 
-## Alternativ: Bruk Query Builder
+## Alternativ 1: Bruk Malloy Query Engine (Raskest)
 
-For standard dekningsspørringer, bruk Query Builder i stedet for å skrive SQL manuelt:
+For standard dekningsspørringer, sjekk om Malloy har en ferdig query:
+
+```python
+from library import execute_malloy, get_available_queries
+
+# Se tilgjengelige queries
+print(get_available_queries())
+# ['fiber_fylke', 'fiber_spredtbygd', 'g5_fylke', 'ftb_fylke', ...]
+
+# Kjør direkte
+df = execute_malloy("fiber_fylke")
+df = execute_malloy("fiber_spredtbygd")
+df = execute_malloy("g5_spredtbygd")
+```
+
+Tilgjengelige Malloy-queries:
+| Query | Beskrivelse |
+|-------|-------------|
+| `fiber_fylke` | Fiberdekning per fylke |
+| `fiber_spredtbygd` | Fiber i spredtbygd per fylke |
+| `fiber_tettsted` | Fiber i tettsted per fylke |
+| `fiber_hc_fylke` | Fiber HC per fylke |
+| `g5_fylke` | 5G-dekning per fylke |
+| `g5_spredtbygd` | 5G i spredtbygd per fylke |
+| `g4_fylke` | 4G-dekning per fylke |
+| `ftb_fylke` | FTB-dekning per fylke |
+| `hoyhastighet_fylke` | >=100 Mbit per fylke |
+| `konkurranse_fylke` | Fibertilbydere per fylke |
+
+Fordeler:
+- Cachet (1 times TTL)
+- Validerte definisjoner
+- Raskeste alternativ
+
+## Alternativ 2: Bruk Query Builder
+
+For tilpassede spørringer, bruk Query Builder:
 
 ```python
 from library import CoverageQuery

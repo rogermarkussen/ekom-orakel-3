@@ -7,7 +7,7 @@ Du er en autonom dataanalytiker. Din jobb er å besvare brukerens spørsmål om 
 ## Regler
 
 1. **Bruk `/ny` for nye uttrekk.** ALDRI lag nye filer under `uttrekk/` uten å kjøre `/ny` først.
-2. **Direkte spørsmål = DuckDB.** Spørsmål uten `/ny` besvares direkte med DuckDB. Ingen filer lagres.
+2. **Direkte spørsmål = Query Engine.** Bruk `execute_malloy()` eller `execute_coverage()` for dekningsspørsmål. Fallback til DuckDB kun for komplekse spørsmål.
 3. **Ikke gjett.** Hvis du er usikker på definisjoner, spør brukeren.
 4. **Bruk biblioteket.** Importer fra `library` i stedet for å hardkode.
 5. **Valider alltid.** Sjekk at resultatene gir mening før du svarer.
@@ -151,6 +151,42 @@ query = CoverageQuery(
 )
 result = query.execute()  # Returnerer DataFrame
 ```
+
+---
+
+## Query Engine (anbefalt for direkte spørsmål)
+
+For direkte spørsmål (uten `/ny`), bruk Query Engine:
+
+```python
+from library import execute_malloy, execute_coverage, get_available_queries
+
+# Se tilgjengelige queries
+get_available_queries()
+# ['fiber_fylke', 'fiber_spredtbygd', 'g5_fylke', 'ftb_fylke', ...]
+
+# Kjør Malloy-query (cachet, 1t TTL)
+df = execute_malloy("fiber_fylke")
+df = execute_malloy("g5_spredtbygd")
+
+# Høynivå med auto-routing
+df = execute_coverage(teknologi="fiber", populasjon="spredtbygd")
+df = execute_coverage(teknologi="5g", group_by="fylke")
+```
+
+**Tilgjengelige queries:**
+| Query | Beskrivelse |
+|-------|-------------|
+| `fiber_fylke` | Fiberdekning per fylke |
+| `fiber_spredtbygd` | Fiber i spredtbygd |
+| `fiber_tettsted` | Fiber i tettsted |
+| `fiber_hc_fylke` | Fiber HC per fylke |
+| `hoyhastighet_fylke` | >=100 Mbit per fylke |
+| `g5_fylke` | 5G-dekning per fylke |
+| `g5_spredtbygd` | 5G i spredtbygd |
+| `g4_fylke` | 4G-dekning per fylke |
+| `ftb_fylke` | FTB-dekning per fylke |
+| `konkurranse_fylke` | Fibertilbydere per fylke |
 
 ---
 

@@ -54,6 +54,8 @@ from library.knowledge import (
     KnowledgeBase,
     Query,
     Correction,
+    SessionTracker,
+    get_session,
 )
 from library.query_matcher import (
     QueryMatcher,
@@ -89,6 +91,20 @@ from library.doc_checker import (
     parse_norwegian_number,
     find_document,
 )
+from library.engine import (
+    execute_malloy,
+    execute_sql_cached,
+    execute_coverage,
+    get_available_queries,
+    get_query_info,
+    invalidate_cache,
+    get_cache_stats,
+    MALLOY_QUERIES,
+)
+from library.error_handler import (
+    with_error_learning,
+    auto_learn_from_error,
+)
 
 __all__ = [
     # Loader
@@ -122,6 +138,8 @@ __all__ = [
     "KnowledgeBase",
     "Query",
     "Correction",
+    "SessionTracker",
+    "get_session",
     # Query Matcher
     "QueryMatcher",
     "MatchResult",
@@ -151,4 +169,16 @@ __all__ = [
     "LearnedPattern",
     "parse_norwegian_number",
     "find_document",
+    # Query Engine
+    "execute_malloy",
+    "execute_sql_cached",
+    "execute_coverage",
+    "get_available_queries",
+    "get_query_info",
+    "invalidate_cache",
+    "get_cache_stats",
+    "MALLOY_QUERIES",
+    # Error Handler
+    "with_error_learning",
+    "auto_learn_from_error",
 ]

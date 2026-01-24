@@ -130,10 +130,145 @@ source: dekning_hoyhast is adr extend {
 }
 
 // ============================================================
+// Source: 5G-adresser (Mobildekning)
+// ============================================================
+source: g5_adresser is duckdb.sql("""
+  SELECT DISTINCT adrid
+  FROM 'lib/2024/mob.parquet'
+  WHERE tek = '5g'
+""") extend {
+  primary_key: adrid
+}
+
+source: dekning_5g is adr extend {
+  join_one: g5_adresser on adrid = g5_adresser.adrid
+
+  dimension:
+    har_5g is g5_adresser.adrid != null
+
+  measure:
+    hus_5g is hus.sum() { where: har_5g }
+    g5_pct is round(hus_5g / antall_husstander * 100, 1)
+
+  view: per_fylke is {
+    group_by: fylke_navn
+    aggregate: hus_5g, antall_husstander, g5_pct
+    order_by: fylke_navn
+  }
+
+  view: spredtbygd_fylke is {
+    where: populasjon_type = 'spredtbygd'
+    group_by: fylke_navn
+    aggregate: hus_5g, antall_husstander, g5_pct
+    order_by: fylke_navn
+  }
+}
+
+// ============================================================
+// Source: 4G-adresser (Mobildekning)
+// ============================================================
+source: g4_adresser is duckdb.sql("""
+  SELECT DISTINCT adrid
+  FROM 'lib/2024/mob.parquet'
+  WHERE tek = '4g'
+""") extend {
+  primary_key: adrid
+}
+
+source: dekning_4g is adr extend {
+  join_one: g4_adresser on adrid = g4_adresser.adrid
+
+  dimension:
+    har_4g is g4_adresser.adrid != null
+
+  measure:
+    hus_4g is hus.sum() { where: har_4g }
+    g4_pct is round(hus_4g / antall_husstander * 100, 1)
+
+  view: per_fylke is {
+    group_by: fylke_navn
+    aggregate: hus_4g, antall_husstander, g4_pct
+    order_by: fylke_navn
+  }
+}
+
+// ============================================================
+// Source: FTB-adresser (Fast trådløst bredbånd)
+// ============================================================
+source: ftb_adresser is duckdb.sql("""
+  SELECT DISTINCT adrid
+  FROM 'lib/2024/fbb.parquet'
+  WHERE tek = 'ftb'
+""") extend {
+  primary_key: adrid
+}
+
+source: dekning_ftb is adr extend {
+  join_one: ftb_adresser on adrid = ftb_adresser.adrid
+
+  dimension:
+    har_ftb is ftb_adresser.adrid != null
+
+  measure:
+    hus_ftb is hus.sum() { where: har_ftb }
+    ftb_pct is round(hus_ftb / antall_husstander * 100, 1)
+
+  view: per_fylke is {
+    group_by: fylke_navn
+    aggregate: hus_ftb, antall_husstander, ftb_pct
+    order_by: fylke_navn
+  }
+}
+
+// ============================================================
+// Source: Konkurranse (Fibertilbydere per adresse)
+// ============================================================
+source: fiber_tilbydere_per_adr is duckdb.sql("""
+  SELECT adrid, COUNT(DISTINCT tilb) as antall_tilb
+  FROM 'lib/2024/fbb.parquet'
+  WHERE tek = 'fiber'
+  GROUP BY adrid
+""") extend {
+  primary_key: adrid
+}
+
+source: dekning_konkurranse is adr extend {
+  join_one: fiber_tilbydere_per_adr on adrid = fiber_tilbydere_per_adr.adrid
+
+  dimension:
+    har_fiber is fiber_tilbydere_per_adr.adrid != null
+    antall_tilb is fiber_tilbydere_per_adr.antall_tilb
+
+  measure:
+    hus_1_tilb is hus.sum() { where: antall_tilb = 1 }
+    hus_2_tilb is hus.sum() { where: antall_tilb = 2 }
+    hus_3_tilb is hus.sum() { where: antall_tilb >= 3 }
+
+  view: per_fylke is {
+    group_by: fylke_navn
+    aggregate: hus_1_tilb, hus_2_tilb, hus_3_tilb, antall_husstander
+    order_by: fylke_navn
+  }
+}
+
+// ============================================================
 // Named queries - Kjørbare spørringer
 // ============================================================
+
+// Fiber
 query: fiber_fylke is dekning_fiber -> per_fylke
 query: fiber_spredtbygd is dekning_fiber -> spredtbygd_fylke
 query: fiber_tettsted is dekning_fiber -> tettsted_fylke
 query: fiber_hc_fylke is dekning_fiber_hc -> per_fylke
 query: hoyhastighet_fylke is dekning_hoyhast -> per_fylke
+
+// Mobildekning
+query: g5_fylke is dekning_5g -> per_fylke
+query: g5_spredtbygd is dekning_5g -> spredtbygd_fylke
+query: g4_fylke is dekning_4g -> per_fylke
+
+// FTB
+query: ftb_fylke is dekning_ftb -> per_fylke
+
+// Konkurranse
+query: konkurranse_fylke is dekning_konkurranse -> per_fylke

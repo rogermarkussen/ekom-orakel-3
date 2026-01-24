@@ -519,3 +519,117 @@ class KnowledgeBase:
                 "tags": tags_count,
                 "categories": dict(categories),
             }
+
+
+class SessionTracker:
+    """
+    Track queries under sesjon for batch-logging via /loggpush.
+
+    I stedet for å logge hver spørring umiddelbart, husker SessionTracker
+    dem til brukeren kjører /loggpush.
+
+    Eksempel:
+        from library import get_session
+
+        session = get_session()
+        session.remember_query("Fiberdekning?", "SELECT ...", "91% nasjonalt")
+        # ... flere spørringer ...
+
+        # Ved /loggpush:
+        count = session.flush_to_kb(category="Dekning", tags=["fiber"])
+    """
+
+    def __init__(self):
+        self._pending_queries: list[dict] = []
+        self._pending_corrections: list[dict] = []
+
+    def remember_query(
+        self,
+        question: str,
+        sql: str,
+        result_summary: str,
+        category: str = "Dekning",
+        tags: Optional[list[str]] = None,
+    ):
+        """Husk en verifisert spørring for senere logging."""
+        self._pending_queries.append({
+            "question": question,
+            "sql": sql,
+            "result_summary": result_summary,
+            "category": category,
+            "tags": tags or [],
+        })
+
+    def remember_correction(
+        self,
+        context: str,
+        error: str,
+        solution: str,
+        pattern: Optional[str] = None,
+    ):
+        """Husk en korreksjon for senere logging."""
+        self._pending_corrections.append({
+            "context": context,
+            "error": error,
+            "solution": solution,
+            "pattern": pattern,
+        })
+
+    def get_pending_count(self) -> tuple[int, int]:
+        """Returner antall ventende (queries, corrections)."""
+        return len(self._pending_queries), len(self._pending_corrections)
+
+    def flush_to_kb(self) -> int:
+        """
+        Skriv alle ventende elementer til knowledge base.
+
+        Returns:
+            Antall elementer som ble skrevet
+        """
+        kb = KnowledgeBase()
+        count = 0
+
+        for q in self._pending_queries:
+            kb.add_query(
+                question=q["question"],
+                sql=q["sql"],
+                result_summary=q["result_summary"],
+                category=q["category"],
+                tags=q["tags"],
+            )
+            count += 1
+
+        for c in self._pending_corrections:
+            kb.add_correction(
+                context=c["context"],
+                error=c["error"],
+                solution=c["solution"],
+                pattern=c.get("pattern"),
+            )
+            count += 1
+
+        self._pending_queries.clear()
+        self._pending_corrections.clear()
+
+        return count
+
+    def clear(self):
+        """Tøm ventende elementer uten å lagre."""
+        self._pending_queries.clear()
+        self._pending_corrections.clear()
+
+
+# Singleton session tracker
+_session: Optional[SessionTracker] = None
+
+
+def get_session() -> SessionTracker:
+    """
+    Hent global SessionTracker instance.
+
+    Returnerer samme instans gjennom hele sesjonen.
+    """
+    global _session
+    if _session is None:
+        _session = SessionTracker()
+    return _session

@@ -11,7 +11,27 @@ Gå gjennom samtalen og identifiser:
 
 Ikke logg noe som allerede er logget tidligere i sesjonen.
 
-### Lagre til SQLite Knowledge Base (Foretrukket)
+### Bruk SessionTracker (Foretrukket)
+
+SessionTracker samler spørringer gjennom sesjonen for batch-logging:
+
+```python
+from library import get_session
+
+session = get_session()
+
+# Se ventende elementer
+queries, corrections = session.get_pending_count()
+print(f"Ventende: {queries} spørringer, {corrections} korreksjoner")
+
+# Skriv til knowledge base
+count = session.flush_to_kb()
+print(f"Lagret {count} elementer")
+```
+
+### Manuell logging (Alternativ)
+
+Hvis SessionTracker ikke har fanget spørringer, logg manuelt:
 
 ```python
 from library import KnowledgeBase, extract_keywords

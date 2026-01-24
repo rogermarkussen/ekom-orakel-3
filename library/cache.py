@@ -359,6 +359,73 @@ class PrecomputedAggregates:
             return pl.read_parquet(path)
         return None
 
+    def needs_refresh(self, name: str) -> bool:
+        """
+        Sjekk om aggregat trenger refresh basert på kildefil-mtime.
+
+        Args:
+            name: Navn på aggregat
+
+        Returns:
+            True hvis aggregatet ikke finnes eller er eldre enn kildefilene
+        """
+        path = self.cache_dir / f"{name}.parquet"
+        if not path.exists():
+            return True
+
+        cache_mtime = path.stat().st_mtime
+
+        # Sjekk mot kildedataene (2024 som standard)
+        sources = [
+            LIB_DIR / "2024" / "adr.parquet",
+            LIB_DIR / "2024" / "fbb.parquet",
+        ]
+
+        return any(s.exists() and s.stat().st_mtime > cache_mtime for s in sources)
+
+    def refresh_all_if_needed(self) -> list[str]:
+        """
+        Refresh alle aggregater som trenger det.
+
+        Returns:
+            Liste med navn på refreshede aggregater
+        """
+        refreshed = []
+        for name in self.AGGREGATES:
+            if self.needs_refresh(name):
+                try:
+                    self.generate(name)
+                    refreshed.append(name)
+                except Exception:
+                    pass  # Ignorer feil, fortsett med neste
+        return refreshed
+
+    def get_status(self) -> dict:
+        """
+        Hent status for alle precomputed aggregates.
+
+        Returns:
+            Dict med navn -> status info
+        """
+        from datetime import datetime
+
+        status = {}
+        for name in self.AGGREGATES:
+            path = self.cache_dir / f"{name}.parquet"
+            exists = path.exists()
+
+            status[name] = {
+                "exists": exists,
+                "needs_refresh": self.needs_refresh(name),
+                "last_updated": (
+                    datetime.fromtimestamp(path.stat().st_mtime).isoformat()
+                    if exists
+                    else None
+                ),
+            }
+
+        return status
+
 
 # Singleton for enkel tilgang
 _db_cache: Optional[DuckDBCache] = None

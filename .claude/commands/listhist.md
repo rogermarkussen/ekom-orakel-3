@@ -58,12 +58,16 @@ Vis som tabell. Filteret begrenser også til siste 20.
 
 2. Vis spørringens SQL
 
-3. Kjør SQL med DuckDB:
+3. Kjør SQL med caching og feilhåndtering:
    ```python
-   from library import execute_sql
-   result = execute_sql(query.sql)
+   from library import execute_sql_cached
+   result = execute_sql_cached(query.sql)
    print(result)
    ```
+
+   `execute_sql_cached` gir:
+   - Automatisk caching (1 times TTL)
+   - Auto-learning feilhåndtering (registrerer korreksjoner)
 
 4. Vis resultatet (husk regel 12: tabell først for fylkesfordeling)
 
