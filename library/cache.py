@@ -36,11 +36,23 @@ class DuckDBCache:
     DuckDB connection med pre-registrerte views.
 
     Unngår gjentatt fil-parsing ved å bruke views.
+    Singleton - kun én instans opprettes.
     """
 
+    _instance: Optional["DuckDBCache"] = None
+    _initialized: bool = False
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self):
+        if self._initialized:
+            return
         self.conn = duckdb.connect(":memory:")
         self._register_views()
+        DuckDBCache._initialized = True
 
     def _register_views(self):
         """Registrer parquet-filer som views."""
@@ -134,9 +146,27 @@ class QueryCache:
             self._index = {}
 
     def _save_index(self):
-        """Lagre cache-indeks til disk."""
-        with open(self._index_path, "w") as f:
-            json.dump(self._index, f)
+        """Lagre cache-indeks til disk (atomic write)."""
+        import tempfile
+
+        # Skriv til temp-fil først, så rename (atomisk på POSIX)
+        fd, tmp_path = tempfile.mkstemp(
+            dir=self._index_path.parent,
+            prefix=".index_",
+            suffix=".tmp"
+        )
+        try:
+            with open(fd, "w") as f:
+                json.dump(self._index, f)
+            # Atomisk rename
+            Path(tmp_path).replace(self._index_path)
+        except Exception:
+            # Rydd opp temp-fil ved feil
+            try:
+                Path(tmp_path).unlink()
+            except OSError:
+                pass
+            raise
 
     def _hash_sql(self, sql: str) -> str:
         """Generer hash for SQL query."""
@@ -160,11 +190,18 @@ class QueryCache:
     def get(self, sql: str) -> Optional[pl.DataFrame]:
         """Hent cachet resultat hvis tilgjengelig."""
         sql_hash = self._hash_sql(sql)
+        return self.get_by_key(sql_hash)
 
-        if not self._is_valid(sql_hash):
+    def get_by_key(self, key: str) -> Optional[pl.DataFrame]:
+        """
+        Hent cachet resultat med eksplisitt nøkkel.
+
+        Brukes når nøkkelen allerede er beregnet (f.eks. for Malloy-queries).
+        """
+        if not self._is_valid(key):
             return None
 
-        cache_path = self._get_cache_path(sql_hash)
+        cache_path = self._get_cache_path(key)
         if not cache_path.exists():
             return None
 
@@ -173,15 +210,28 @@ class QueryCache:
     def set(self, sql: str, result: pl.DataFrame):
         """Lagre resultat i cache."""
         sql_hash = self._hash_sql(sql)
-        cache_path = self._get_cache_path(sql_hash)
+        self.set_by_key(sql_hash, result, description=sql[:100])
+
+    def set_by_key(self, key: str, result: pl.DataFrame, description: str = ""):
+        """
+        Lagre resultat med eksplisitt nøkkel.
+
+        Brukes når nøkkelen allerede er beregnet (f.eks. for Malloy-queries).
+
+        Args:
+            key: Cache-nøkkel
+            result: DataFrame å lagre
+            description: Beskrivelse for indeks (vises i stats)
+        """
+        cache_path = self._get_cache_path(key)
 
         # Lagre parquet
         result.write_parquet(cache_path)
 
         # Oppdater indeks
-        self._index[sql_hash] = {
+        self._index[key] = {
             "timestamp": time.time(),
-            "sql_preview": sql[:100],
+            "sql_preview": description[:100] if description else key,
             "rows": result.height,
             "size": cache_path.stat().st_size,
         }
@@ -251,19 +301,28 @@ class QueryCache:
         """
         if sql:
             sql_hash = self._hash_sql(sql)
-            cache_path = self._get_cache_path(sql_hash)
-            if cache_path.exists():
-                cache_path.unlink()
-            if sql_hash in self._index:
-                del self._index[sql_hash]
+            self.invalidate_by_key(sql_hash)
         else:
             # Slett all cache
-            for sql_hash in list(self._index.keys()):
-                cache_path = self._get_cache_path(sql_hash)
+            for key in list(self._index.keys()):
+                cache_path = self._get_cache_path(key)
                 if cache_path.exists():
                     cache_path.unlink()
             self._index = {}
+            self._save_index()
 
+    def invalidate_by_key(self, key: str):
+        """
+        Invalidér cache-entry med eksplisitt nøkkel.
+
+        Args:
+            key: Cache-nøkkel å invalidere
+        """
+        cache_path = self._get_cache_path(key)
+        if cache_path.exists():
+            cache_path.unlink()
+        if key in self._index:
+            del self._index[key]
         self._save_index()
 
     def get_stats(self) -> dict:
@@ -383,22 +442,22 @@ class PrecomputedAggregates:
 
         return any(s.exists() and s.stat().st_mtime > cache_mtime for s in sources)
 
-    def refresh_all_if_needed(self) -> list[str]:
+    def refresh_all_if_needed(self) -> dict[str, str | None]:
         """
         Refresh alle aggregater som trenger det.
 
         Returns:
-            Liste med navn på refreshede aggregater
+            Dict med navn -> None (success) eller feilmelding (failure)
         """
-        refreshed = []
+        results: dict[str, str | None] = {}
         for name in self.AGGREGATES:
             if self.needs_refresh(name):
                 try:
                     self.generate(name)
-                    refreshed.append(name)
-                except Exception:
-                    pass  # Ignorer feil, fortsett med neste
-        return refreshed
+                    results[name] = None  # Success
+                except Exception as e:
+                    results[name] = str(e)  # Feilmelding
+        return results
 
     def get_status(self) -> dict:
         """

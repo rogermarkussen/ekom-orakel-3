@@ -17,6 +17,7 @@ Eksempel:
 import asyncio
 import hashlib
 import json
+import warnings
 from pathlib import Path
 from typing import Any, Literal, Optional
 
@@ -230,15 +231,13 @@ def execute_malloy(
         )
 
     cache = _get_query_cache()
-    cache_key = _make_cache_key(query_name, filters)
 
     # Sjekk cache (uten filtre først, så appliserer vi filtre etterpå)
-    base_cache_key = _make_cache_key(query_name, None)
+    base_cache_key = f"malloy_{_make_cache_key(query_name, None)}"
 
     if not force_refresh:
-        # Prøv å hente fra cache
-        # Vi cacher base-resultatet (uten filtre) for gjenbruk
-        cached = cache.get(f"malloy_{base_cache_key}")
+        # Prøv å hente fra cache med eksplisitt nøkkel
+        cached = cache.get_by_key(base_cache_key)
         if cached is not None:
             df = cached
         else:
@@ -251,17 +250,24 @@ def execute_malloy(
         engine = _get_malloy_engine()
         df = engine.run_query(query_name)
 
-        # Cache base-resultatet
-        cache.set(f"malloy_{base_cache_key}", df)
+        # Cache base-resultatet med eksplisitt nøkkel
+        cache.set_by_key(base_cache_key, df, description=f"Malloy: {query_name}")
 
     # Appliser post-execution filtre
     if filters:
         for col, value in filters.items():
-            if col in df.columns:
-                if isinstance(value, list):
-                    df = df.filter(pl.col(col).is_in(value))
-                else:
-                    df = df.filter(pl.col(col) == value)
+            if col not in df.columns:
+                warnings.warn(
+                    f"Filter-kolonne '{col}' finnes ikke i resultat. "
+                    f"Tilgjengelige kolonner: {df.columns}",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                continue
+            if isinstance(value, list):
+                df = df.filter(pl.col(col).is_in(value))
+            else:
+                df = df.filter(pl.col(col) == value)
 
     # Konverter til ønsket format
     if output == "json":
@@ -309,8 +315,8 @@ def invalidate_cache(query_name: Optional[str] = None):
     cache = _get_query_cache()
 
     if query_name:
-        cache_key = _make_cache_key(query_name, None)
-        cache.invalidate(f"malloy_{cache_key}")
+        cache_key = f"malloy_{_make_cache_key(query_name, None)}"
+        cache.invalidate_by_key(cache_key)
     else:
         cache.invalidate()
 

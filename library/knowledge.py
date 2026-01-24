@@ -551,13 +551,29 @@ class SessionTracker:
         category: str = "Dekning",
         tags: Optional[list[str]] = None,
     ):
-        """Husk en verifisert spørring for senere logging."""
+        """
+        Husk en verifisert spørring for senere logging.
+
+        Raises:
+            ValueError: Hvis required fields mangler eller er tomme
+        """
+        # Valider required fields
+        if not question or not question.strip():
+            raise ValueError("question kan ikke være tom")
+        if not sql or not sql.strip():
+            raise ValueError("sql kan ikke være tom")
+        if not result_summary or not result_summary.strip():
+            raise ValueError("result_summary kan ikke være tom")
+        if not category or not category.strip():
+            raise ValueError("category kan ikke være tom")
+
         self._pending_queries.append({
-            "question": question,
-            "sql": sql,
-            "result_summary": result_summary,
-            "category": category,
+            "question": question.strip(),
+            "sql": sql.strip(),
+            "result_summary": result_summary.strip(),
+            "category": category.strip(),
             "tags": tags or [],
+            "verified_at": datetime.now().isoformat(),
         })
 
     def remember_correction(
@@ -583,30 +599,54 @@ class SessionTracker:
         """
         Skriv alle ventende elementer til knowledge base.
 
+        Bruker én transaksjon for alle inserts (mer effektivt).
+
         Returns:
             Antall elementer som ble skrevet
         """
+        if not self._pending_queries and not self._pending_corrections:
+            return 0
+
         kb = KnowledgeBase()
         count = 0
 
-        for q in self._pending_queries:
-            kb.add_query(
-                question=q["question"],
-                sql=q["sql"],
-                result_summary=q["result_summary"],
-                category=q["category"],
-                tags=q["tags"],
-            )
-            count += 1
+        # Wrap alt i én transaksjon
+        with sqlite3.connect(kb.db_path) as conn:
+            for q in self._pending_queries:
+                # Bruk verified_at fra da spørringen ble husket
+                verified_date = q.get("verified_at", "")[:10] or datetime.now().strftime("%Y-%m-%d")
 
-        for c in self._pending_corrections:
-            kb.add_correction(
-                context=c["context"],
-                error=c["error"],
-                solution=c["solution"],
-                pattern=c.get("pattern"),
-            )
-            count += 1
+                cursor = conn.execute("""
+                    INSERT INTO queries (question, sql, result_summary, category, verified_date, promoted, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (q["question"], q["sql"], q["result_summary"], q["category"], verified_date, 0, None))
+
+                query_id = cursor.lastrowid
+
+                # Legg til tags
+                for tag in q["tags"]:
+                    conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag,))
+                    conn.execute("""
+                        INSERT INTO query_tags (query_id, tag_id)
+                        SELECT ?, id FROM tags WHERE name = ?
+                    """, (query_id, tag))
+
+                count += 1
+
+            for c in self._pending_corrections:
+                conn.execute("""
+                    INSERT INTO corrections (context, error, solution, pattern, created_date)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    c["context"],
+                    c["error"],
+                    c["solution"],
+                    c.get("pattern"),
+                    datetime.now().strftime("%Y-%m-%d"),
+                ))
+                count += 1
+
+            conn.commit()
 
         self._pending_queries.clear()
         self._pending_corrections.clear()

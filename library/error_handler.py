@@ -5,11 +5,17 @@ Fanger feil under query-kjøring og registrerer korreksjoner automatisk
 slik at samme feil ikke gjentas (CLAUDE.md regel 9).
 
 Eksempel:
-    from library.error_handler import with_error_learning
+    from library.error_handler import with_error_learning, QueryError
 
     @with_error_learning
     def execute_sql(sql: str) -> pl.DataFrame:
         # ...
+
+    try:
+        execute_sql("SELECT ...")
+    except QueryError as e:
+        print(f"Original feil: {e.original}")
+        print(f"Forslag: {e.suggestion}")
 """
 
 import re
@@ -17,6 +23,24 @@ from functools import wraps
 from typing import Optional
 
 from library.knowledge import KnowledgeBase
+
+
+class QueryError(Exception):
+    """
+    Exception med løsningsforslag.
+
+    Bevarer original exception-type og legger til suggestion.
+    Bruk e.original for å få original exception, e.suggestion for forslaget.
+    """
+
+    def __init__(self, original: Exception, suggestion: str):
+        self.original = original
+        self.suggestion = suggestion
+        super().__init__(f"{original}\n\nForslag: {suggestion}")
+
+    def __reduce__(self):
+        """Støtt pickling av exception."""
+        return (self.__class__, (self.original, self.suggestion))
 
 # Kjente feilmønstre som skal auto-registreres
 AUTO_CORRECTION_PATTERNS = [
@@ -98,12 +122,17 @@ def with_error_learning(func):
 
     Ved feil:
     1. Logger feilen til knowledge base
-    2. Legger til løsningsforslag i feilmeldingen
+    2. Legger til løsningsforslag i feilmeldingen via QueryError
 
     Eksempel:
         @with_error_learning
         def execute_sql_cached(sql: str, ...) -> pl.DataFrame:
             ...
+
+        try:
+            execute_sql_cached("...")
+        except QueryError as e:
+            print(e.suggestion)
     """
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -112,10 +141,13 @@ def with_error_learning(func):
 
         try:
             return func(*args, **kwargs)
+        except QueryError:
+            # Ikke wrap QueryError på nytt
+            raise
         except Exception as e:
             suggestion = auto_learn_from_error(sql, e)
             if suggestion:
-                raise RuntimeError(f"{e}\n\nForslag: {suggestion}") from e
+                raise QueryError(e, suggestion) from e
             raise
 
     return wrapper
