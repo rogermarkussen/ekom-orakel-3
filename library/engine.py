@@ -370,3 +370,97 @@ def get_cache_stats() -> dict:
     """Hent cache-statistikk."""
     cache = _get_query_cache()
     return cache.get_stats()
+
+
+def execute_ekom(
+    hk: str | list[str],
+    hg: Literal["Abonnement", "Inntekter", "Trafikk"] = "Abonnement",
+    ms: Optional[str] = None,
+    tek: Optional[str] = None,
+    dk: Optional[str] = None,
+    rapport: Optional[str | list[str]] = None,
+    delar: Optional[Literal["Halvår", "Helår"]] = None,
+    ar: Optional[int | list[int]] = None,
+    tilbyder: Optional[str] = None,
+    fylke: Optional[str] = None,
+    pivot_years: bool = True,
+    group_by: Optional[list[str]] = None,
+    force_refresh: bool = False,
+) -> pl.DataFrame:
+    """
+    Kjør ekom-spørring med caching og validering.
+
+    Denne funksjonen bygger og kjører ekom-spørringer med innebygde
+    regler fra EKOM.md:
+    - Auto tp='Sum' (unntatt fylkesdata)
+    - Auto sk-filter for sluttbruker
+    - Auto Datakommunikasjon for FBB Bedrift
+
+    Args:
+        hk: Hovedkategori ('Fast bredbånd', 'Mobiltjenester', etc.)
+        hg: Hovedgruppe ('Abonnement', 'Inntekter', 'Trafikk')
+        ms: Markedssegment ('Privat', 'Bedrift', None for begge)
+        tek: Teknologi (valgfri, f.eks. 'Fiber')
+        dk: Delkategori (valgfri, f.eks. 'Mobiltelefoni')
+        rapport: Rapportperiode(r) (f.eks. '2024-Helår' eller liste)
+        delar: 'Halvår' eller 'Helår' (for tidsserier)
+        ar: År eller liste med år
+        tilbyder: Tilbydernavn (fusnavn)
+        fylke: For mobilabonnement fylkesfordeling (2025+)
+        pivot_years: True for år på kolonner (default)
+        group_by: Kolonner for gruppering/rader
+        force_refresh: Ignorer cache
+
+    Returns:
+        DataFrame med resultat
+
+    Eksempel:
+        # Mobilabonnement over tid
+        df = execute_ekom("Mobiltjenester", dk="Mobiltelefoni", delar="Helår")
+
+        # Fiber per teknologi med pivot
+        df = execute_ekom(
+            "Fast bredbånd",
+            tek="Fiber",
+            rapport=["2022-Helår", "2023-Helår", "2024-Helår"],
+            group_by=["tek"],
+            pivot_years=True
+        )
+
+        # FBB Bedrift (auto-inkluderer Datakommunikasjon)
+        df = execute_ekom("Fast bredbånd", ms="Bedrift", rapport="2024-Helår")
+    """
+    from library.ekom_query import EkomQuery
+
+    query = EkomQuery(
+        hk=hk,
+        hg=hg,
+        ms=ms,
+        tek=tek,
+        dk=dk,
+        rapport=rapport,
+        delar=delar,
+        ar=ar,
+        tilbyder=tilbyder,
+        fylke=fylke,
+        pivot_years=pivot_years,
+        group_by=group_by or [],
+    )
+
+    # Bruk cache hvis ikke force_refresh
+    cache = _get_query_cache()
+    sql = query.to_sql()
+    cache_key = f"ekom_{_make_cache_key(sql, None)}"
+
+    if not force_refresh:
+        cached = cache.get_by_key(cache_key)
+        if cached is not None:
+            return cached
+
+    # Kjør spørring
+    df = query.execute()
+
+    # Cache resultatet
+    cache.set_by_key(cache_key, df, description=f"Ekom: {query.describe()}")
+
+    return df

@@ -47,6 +47,20 @@ class SQLValidator:
             "suggestion": "Legg til 'tp = \"Sum\"' for å unngå dobbeltelling",
             "level": "warning",
         },
+        # FBB Bedrift uten Datakommunikasjon
+        {
+            "pattern": r"hk\s*=\s*['\"]Fast bredb[aå]nd['\"].*ms\s*=\s*['\"]Bedrift['\"](?!.*Datakommunikasjon)",
+            "message": "FBB Bedrift uten Datakommunikasjon",
+            "suggestion": "Bruk hk IN ('Fast bredbånd', 'Datakommunikasjon') for bedriftsmarkedet",
+            "level": "error",
+        },
+        # Mobilfylke med feil tp
+        {
+            "pattern": r"n1\s*(?:=|IN).*(?:Agder|Oslo|Vestland|Akershus|Buskerud|Finnmark|Innlandet|Nordland|Rogaland|Telemark|Troms|Trøndelag|Vestfold|Østfold|Møre og Romsdal).*tp\s*=\s*['\"]Sum['\"]",
+            "message": "Mobilfylke med tp='Sum' (skal være 'Herav')",
+            "suggestion": "Fylkesfordeling for mobil bruker tp='Herav', ikke tp='Sum'",
+            "level": "error",
+        },
         # Hastighetsfilter feil
         {
             "pattern": r"ned\s*>\s*\d+(?!000)",

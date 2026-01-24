@@ -83,6 +83,11 @@ from library.query_builder import (
     HistoricalQuery,
     quick_coverage,
 )
+from library.ekom_query import (
+    EkomQuery,
+    quick_ekom,
+    MOBIL_FYLKER,
+)
 from library.doc_checker import (
     DocumentChecker,
     NumberFinding,
@@ -95,6 +100,7 @@ from library.engine import (
     execute_malloy,
     execute_sql_cached,
     execute_coverage,
+    execute_ekom,
     get_available_queries,
     get_query_info,
     invalidate_cache,
@@ -162,6 +168,10 @@ __all__ = [
     "CompetitionQuery",
     "HistoricalQuery",
     "quick_coverage",
+    # Ekom Query Builder
+    "EkomQuery",
+    "quick_ekom",
+    "MOBIL_FYLKER",
     # Document Checker
     "DocumentChecker",
     "NumberFinding",
@@ -173,6 +183,7 @@ __all__ = [
     "execute_malloy",
     "execute_sql_cached",
     "execute_coverage",
+    "execute_ekom",
     "get_available_queries",
     "get_query_info",
     "invalidate_cache",
