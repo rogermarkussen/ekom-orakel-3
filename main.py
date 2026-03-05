@@ -15,6 +15,7 @@ from typing import Optional
 
 import polars as pl
 
+from library.clarification import AmbiguousQueryError, assess_query_clarity
 from library.engine import (
     execute_coverage,
     execute_malloy,
@@ -41,6 +42,7 @@ class QueryParser:
     """Parser for naturlig språk-spørringer om dekning."""
 
     SPEED_PATTERNS = [
+        (r"\bgigabit(?:dekning)?\b", lambda _: 1000),
         (r"(\d+)\s*gbit", lambda m: int(m.group(1)) * 1000),
         (r"(\d+)\s*mbit", lambda m: int(m.group(1))),
         (r">=?\s*(\d+)", lambda m: int(m.group(1))),
@@ -90,6 +92,15 @@ class QueryParser:
                 fylker.append(fylke)
         return fylker
 
+    def extract_group_by(self, text: str) -> str:
+        """Ekstraher grupperingsnivå fra tekst."""
+        text_lower = text.lower()
+        if "kommune" in text_lower:
+            return "kommune"
+        if any(term in text_lower for term in ["nasjonal", "nasjonalt", "hele landet", "norge totalt"]):
+            return "nasjonal"
+        return "fylke"
+
     def extract_teknologi(self, text: str) -> Optional[list[str]]:
         """Ekstraher teknologier fra tekst."""
         teknologier = []
@@ -121,6 +132,7 @@ class QueryParser:
             populasjon=self.extract_populasjon(user_input),
             hastighet_min=self.extract_hastighet(user_input),
             year=self.extract_year(user_input),
+            group_by=self.extract_group_by(user_input),
             fylker=self.extract_fylker(user_input),
             kun_hc=self.extract_hc(user_input),
         )
@@ -137,28 +149,64 @@ def route_query(user_input: str) -> pl.DataFrame:
         DataFrame med resultat
     """
     parser = QueryParser()
+    clarification = assess_query_clarity(user_input)
+    if clarification.needs_clarification:
+        raise AmbiguousQueryError(clarification.to_user_prompt())
+
     parsed = parser.parse(user_input)
 
     # Høyhastighet
-    if parsed.hastighet_min and parsed.hastighet_min >= 100:
+    if (
+        parsed.hastighet_min
+        and parsed.hastighet_min >= 100
+        and parsed.group_by == "fylke"
+        and parsed.year == 2024
+        and not parsed.fylker
+    ):
         return execute_malloy("hoyhastighet_fylke")
 
     # 5G
-    if parsed.teknologi and "5g" in parsed.teknologi:
+    if (
+        parsed.teknologi
+        and "5g" in parsed.teknologi
+        and parsed.group_by == "fylke"
+        and parsed.year == 2024
+        and not parsed.fylker
+    ):
         if parsed.populasjon == "spredtbygd":
             return execute_malloy("g5_spredtbygd")
         return execute_malloy("g5_fylke")
 
     # 4G
-    if parsed.teknologi and "4g" in parsed.teknologi:
+    if (
+        parsed.teknologi
+        and "4g" in parsed.teknologi
+        and parsed.group_by == "fylke"
+        and parsed.year == 2024
+        and not parsed.fylker
+    ):
         return execute_malloy("g4_fylke")
 
     # FTB
-    if parsed.teknologi and "ftb" in parsed.teknologi:
+    if (
+        parsed.teknologi
+        and "ftb" in parsed.teknologi
+        and parsed.group_by == "fylke"
+        and parsed.year == 2024
+        and not parsed.fylker
+        and parsed.hastighet_min is None
+    ):
         return execute_malloy("ftb_fylke")
 
     # Fiber
-    if parsed.teknologi and "fiber" in parsed.teknologi:
+    if (
+        parsed.teknologi
+        and "fiber" in parsed.teknologi
+        and parsed.group_by == "fylke"
+        and parsed.year == 2024
+        and not parsed.fylker
+        and parsed.hastighet_min is None
+    ):
         if parsed.kun_hc:
             return execute_malloy("fiber_hc_fylke")
         elif parsed.populasjon == "spredtbygd":
@@ -169,10 +217,11 @@ def route_query(user_input: str) -> pl.DataFrame:
 
     # Fallback til execute_coverage
     return execute_coverage(
-        teknologi=parsed.teknologi or ["fiber"],
+        teknologi=parsed.teknologi or [],
         populasjon=parsed.populasjon,
         group_by=parsed.group_by,
         year=parsed.year,
+        hastighet_min=parsed.hastighet_min,
     )
 
 
@@ -193,16 +242,25 @@ def main():
         sys.exit(1)
 
     user_input = " ".join(sys.argv[1:])
+    clarification = assess_query_clarity(user_input)
+
+    print(f"Spørring: {user_input}")
+    print("-" * 50)
+
+    if clarification.needs_clarification:
+        print(clarification.to_user_prompt())
+        sys.exit(2)
 
     # Parse og vis info
     parser = QueryParser()
     parsed = parser.parse(user_input)
-
-    print(f"Spørring: {user_input}")
     print(f"Parsed: teknologi={parsed.teknologi}, pop={parsed.populasjon}, år={parsed.year}")
-    print("-" * 50)
 
-    df = route_query(user_input)
+    try:
+        df = route_query(user_input)
+    except AmbiguousQueryError as exc:
+        print(exc)
+        sys.exit(2)
     print(df)
 
 

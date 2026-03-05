@@ -17,6 +17,7 @@ Eksempel:
 import asyncio
 import hashlib
 import json
+import sys
 import warnings
 from pathlib import Path
 from typing import Any, Literal, Optional
@@ -137,13 +138,18 @@ class MalloyEngine:
         """Kjør Malloy-query asynkront."""
         self._ensure_initialized()
 
-        with self._runtime_class() as runtime:
-            runtime.add_connection(
-                self._connection_class(home_dir=str(PROJECT_ROOT))
-            )
-            runtime.load_file(str(MODEL_PATH))
-            result = await runtime.run(named_query=query_name)
-            return pl.from_pandas(result.to_dataframe())
+        original_argv = sys.argv[:]
+        sys.argv = [sys.argv[0]]
+        try:
+            with self._runtime_class() as runtime:
+                runtime.add_connection(
+                    self._connection_class(home_dir=str(PROJECT_ROOT))
+                )
+                runtime.load_file(str(MODEL_PATH))
+                result = await runtime.run(named_query=query_name)
+                return pl.from_pandas(result.to_dataframe())
+        finally:
+            sys.argv = original_argv
 
     def run_query(self, query_name: str) -> pl.DataFrame:
         """Kjør Malloy-query synkront."""
@@ -326,6 +332,7 @@ def execute_coverage(
     populasjon: Optional[Literal["tettsted", "spredtbygd"]] = None,
     group_by: Literal["fylke", "kommune", "nasjonal"] = "fylke",
     year: int = 2024,
+    hastighet_min: Optional[int] = None,
 ) -> pl.DataFrame:
     """
     Høynivå convenience for dekningsspørringer.
@@ -337,6 +344,7 @@ def execute_coverage(
         populasjon: "tettsted", "spredtbygd", eller None for begge
         group_by: Aggregeringsnivå
         year: Årstall
+        hastighet_min: Minimum nedhastighet i Mbit/s
 
     Returns:
         DataFrame med dekning
@@ -346,7 +354,7 @@ def execute_coverage(
         teknologi = [teknologi]
 
     # Prøv å mappe til Malloy-query
-    if teknologi == ["fiber"] and year == 2024 and group_by == "fylke":
+    if teknologi == ["fiber"] and year == 2024 and group_by == "fylke" and hastighet_min is None:
         if populasjon == "spredtbygd":
             return execute_malloy("fiber_spredtbygd")
         elif populasjon == "tettsted":
@@ -354,12 +362,22 @@ def execute_coverage(
         elif populasjon is None:
             return execute_malloy("fiber_fylke")
 
+    if teknologi == ["5g"] and year == 2024 and group_by == "fylke" and hastighet_min is None:
+        if populasjon == "spredtbygd":
+            return execute_malloy("g5_spredtbygd")
+        elif populasjon is None:
+            return execute_malloy("g5_fylke")
+
+    if teknologi == ["4g"] and year == 2024 and group_by == "fylke" and populasjon is None and hastighet_min is None:
+        return execute_malloy("g4_fylke")
+
     # Fallback til CoverageQuery
     from library.query_builder import CoverageQuery
 
     query = CoverageQuery(
         year=year,
         teknologi=teknologi,
+        hastighet_min=hastighet_min,
         populasjon=populasjon,
         group_by=group_by,
     )
@@ -464,3 +482,33 @@ def execute_ekom(
     cache.set_by_key(cache_key, df, description=f"Ekom: {query.describe()}")
 
     return df
+
+
+def execute_mobilabonnement_fylke(
+    rapport: str = "2025-Halvår",
+    ms: Optional[str] = None,
+    tilbyder: Optional[str] = None,
+    fylke: Optional[str] = None,
+    group_by: Optional[list[str]] = None,
+    force_refresh: bool = False,
+) -> pl.DataFrame:
+    """
+    Sikker helper for mobilabonnement per fylke.
+
+    Koder inn reglene fra EKOM.md:
+    - kun Mobiltelefoni / Abonnement
+    - kun fra og med 2025-Halvår
+    - bruker tp='Herav'
+    - tolker fylke via n1
+    """
+    return execute_ekom(
+        hk="Mobiltjenester",
+        hg="Abonnement",
+        dk="Mobiltelefoni",
+        rapport=rapport,
+        ms=ms,
+        tilbyder=tilbyder,
+        fylke=fylke,
+        group_by=group_by or ["fylke"],
+        force_refresh=force_refresh,
+    )

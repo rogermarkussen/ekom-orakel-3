@@ -17,6 +17,9 @@ dependencies = [
     "xlsxwriter>=3.2.0",
 ]
 
+[project.scripts]
+orakel = "library.cli:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

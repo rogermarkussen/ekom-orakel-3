@@ -72,6 +72,7 @@ Ekom-data har mange dimensjoner. Spør brukeren hvis noe er uklart:
    - Fylke ligger i `n1`-kolonnen (f.eks. `n1 = 'Agder'`)
    - Fylkesdata har `tp = 'Herav'` (delfordeling av tilbyders nasjonale tall)
    - Tilgjengelige fylker: Agder, Akershus, Buskerud, Finnmark, Innlandet, Møre og Romsdal, Nordland, Oslo, Rogaland, Telemark, Troms, Trøndelag, Vestfold, Vestland, Østfold
+   - I kode: foretrekk `execute_mobilabonnement_fylke()` eller `EkomQuery(..., group_by=['fylke'])` fremfor rå `n1`
 
 ---
 
@@ -218,6 +219,19 @@ ORDER BY rapport
 
 ### Mobilabonnement per fylke (fra 2025-Halvår)
 
+Tryggeste API:
+
+```python
+from library import execute_mobilabonnement_fylke
+
+df = execute_mobilabonnement_fylke(rapport="2025-Halvår", ms="Privat")
+df = execute_mobilabonnement_fylke(
+    rapport="2025-Halvår",
+    ms="Privat",
+    fylke="Agder",
+)
+```
+
 ```sql
 -- Mobilabonnement per fylke (privat)
 SELECT
@@ -244,6 +258,7 @@ ORDER BY n1, antall_ab DESC
 
 - **ALLTID** filtrer på `tp = 'Sum'` for totaler (unntak: fylkesdata som alltid er `tp = 'Herav'`)
 - **ALLTID** filtrer på `sk IN ('Sluttbruker', 'Ingen')` med mindre grossist spørres
+- For fylkesfordeling i kode: bruk `group_by=['fylke']`, ikke rå `n1`, når du vil ha faktiske fylker
 - For millioner: del på 1000000
 - For milliarder NOK (inntekter): del på 1000000 (siden data er i 1000 NOK)
 - Sorter på `rapport` for kronologisk rekkefølge

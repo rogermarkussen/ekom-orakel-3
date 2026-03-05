@@ -29,7 +29,13 @@
 ## Engine API
 
 ```python
-from library import execute_malloy, execute_coverage, execute_sql_cached
+from library import (
+    execute_malloy,
+    execute_coverage,
+    execute_ekom,
+    execute_mobilabonnement_fylke,
+    execute_sql_cached,
+)
 
 # Kjør Malloy-query (cachet, 1t TTL)
 df = execute_malloy("fiber_fylke")
@@ -38,6 +44,11 @@ df = execute_malloy("fiber_spredtbygd", filters={"fylke_navn": "OSLO"})
 # Høynivå convenience (auto-ruter til Malloy eller SQL)
 df = execute_coverage(teknologi="fiber", populasjon="spredtbygd")
 df = execute_coverage(teknologi=["fiber", "ftb"], group_by="fylke")
+df = execute_coverage(teknologi="5g", group_by="kommune", year=2024)
+
+# Ekom convenience
+df = execute_ekom("Fast bredbånd", hg="Abonnement", ms="Bedrift", rapport="2024-Helår")
+df = execute_mobilabonnement_fylke(rapport="2025-Halvår", ms="Privat")
 
 # SQL med caching
 df = execute_sql_cached("SELECT * FROM adr WHERE fylke = 'OSLO'")
@@ -50,12 +61,35 @@ invalidate_cache()  # Invalidér all cache
 get_cache_stats()  # -> {"entries": 5, "total_size_mb": 0.3, ...}
 ```
 
+## Guardrails I API-ene
+
+- `execute_coverage()` bruker `mob.parquet` for rene mobilspørringer og `fbb.parquet` for fastbredbånd.
+- `CoverageQuery(group_by="kommune")` grupperer på `komnavn`.
+- `CoverageQuery` avviser mobil + HC/HP og blanding av mobil og fastbredbånd i samme spørring.
+- `execute_mobilabonnement_fylke()` koder inn reglene for `tp='Herav'`, `dk='Mobiltelefoni'`, `hg='Abonnement'` og periode fra og med `2025-Halvår`.
+
+## CLI-notater
+
+- `/sammenlign` støtter `fiber`, `kabel`, `ftb`, `4g`, `5g`, `100mbit` og `1gbit`.
+- `100mbit` og `1gbit` tolkes som nedhastighet `>= 100` og `>= 1000 Mbit/s`, uavhengig av teknologi.
+- `/graf` bruker automatisk grafvalg:
+  - horisontale stolper for fordelinger
+  - linjer for tidsserier
+  - endringsstolper for sammenligninger med `endring_pp`
+- `/graf` følger fargene i `docs/v1/DESIGNMAL.md` og fremhever `NASJONALT` i mørkeblått.
+
 ---
 
 ## Query Builders
 
 ```python
-from library import CoverageQuery, HistoricalQuery, quick_coverage
+from library import (
+    CoverageQuery,
+    EkomQuery,
+    HistoricalQuery,
+    HistoricalSpeedQuery,
+    quick_coverage,
+)
 
 # Quick one-liner
 df = quick_coverage("fiber")  # Nasjonal fiberdekning
@@ -72,11 +106,30 @@ df = query.execute()
 
 # Historisk tidsserie
 query = HistoricalQuery(
-    metric="fiber",
-    years=[2022, 2023, 2024],
-    group_by="fylke",
+    teknologi=["fiber"],
+    start_year=2022,
+    end_year=2024,
 )
 df = query.execute()
+
+# Ekom med full kontroll
+query = EkomQuery(
+    hk="Mobiltjenester",
+    dk="Mobiltelefoni",
+    hg="Abonnement",
+    rapport="2024-Helår",
+    group_by=["rapport"],
+    pivot_years=False,
+)
+df = query.execute()
+
+# Historisk hastighetsserie
+df = HistoricalSpeedQuery(
+    start_year=2021,
+    end_year=2024,
+    ned=100,
+    opp=100,
+).execute()
 ```
 
 ---
@@ -107,6 +160,9 @@ from library import (
     CoverageQuery,      # DSL for dekningsspørringer
     CompetitionQuery,   # DSL for tilbyderkonkurranse
     quick_coverage,     # quick_coverage("fiber") -> DataFrame
+    EkomQuery,          # DSL for ekom-spørringer
+    execute_ekom,       # Ekom convenience
+    execute_mobilabonnement_fylke,  # Sikker helper for mobilabonnement per fylke
 
     # Knowledge Base
     KnowledgeBase,      # SQLite CRUD + FTS5 søk
@@ -243,6 +299,7 @@ df = execute_malloy("fiber_spredtbygd")
 ```python
 df = execute_malloy("g5_fylke")
 df = execute_malloy("g5_spredtbygd")
+df = execute_coverage(teknologi="5g", group_by="kommune", year=2024)
 ```
 
 ### 4G/LTE-dekning
@@ -258,6 +315,16 @@ df = execute_malloy("ftb_fylke")
 ### Konkurranse (fibertilbydere)
 ```python
 df = execute_malloy("konkurranse_fylke")
+```
+
+### Mobilabonnement per fylke (fra 2025-Halvår)
+```python
+df = execute_mobilabonnement_fylke(rapport="2025-Halvår", ms="Privat")
+df = execute_mobilabonnement_fylke(
+    rapport="2025-Halvår",
+    ms="Privat",
+    fylke="Agder",
+)
 # Kolonner: hus_1_tilb, hus_2_tilb, hus_3_tilb
 ```
 

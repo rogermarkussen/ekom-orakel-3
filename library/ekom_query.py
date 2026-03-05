@@ -101,6 +101,56 @@ class EkomQuery:
     # Forretningsdefinisjon
     definition: Optional[str] = None  # Navn på forretningsdefinisjon fra KB
 
+    def __post_init__(self):
+        """Normaliser input og stopp kjente feilmønstre tidlig."""
+        self.group_by = list(self.group_by)
+        self._validate_query()
+
+    def _is_mobilabonnement_fylkesfordeling(self) -> bool:
+        """Semantisk fylkesfordeling for mobilabonnement."""
+        return self.fylke is not None or "fylke" in self.group_by
+
+    def _parse_report_period(self) -> tuple[int, str] | None:
+        """Hent (år, delar) fra eksplisitt rapport, hvis mulig."""
+        if isinstance(self.rapport, str):
+            year_str, _, delar = self.rapport.partition("-")
+            if year_str.isdigit() and delar in {"Halvår", "Helår"}:
+                return int(year_str), delar
+        if isinstance(self.ar, int) and self.delar:
+            return self.ar, self.delar
+        return None
+
+    def _validate_query(self):
+        """Valider kombinasjoner som ellers lett gir misvisende tall."""
+        if not self._is_mobilabonnement_fylkesfordeling():
+            return
+
+        hk_list = [self.hk] if isinstance(self.hk, str) else list(self.hk)
+        if hk_list != ["Mobiltjenester"]:
+            raise ValueError("Fylkesfordeling støttes bare for mobilabonnement under hk='Mobiltjenester'.")
+
+        if self.dk != "Mobiltelefoni" or self.hg != "Abonnement":
+            raise ValueError(
+                "Fylkesfordeling krever dk='Mobiltelefoni' og hg='Abonnement'."
+            )
+
+        if self.n1 is not None:
+            raise ValueError(
+                "Bruk 'fylke' eller group_by=['fylke'] for mobil fylkesfordeling, ikke rå n1."
+            )
+
+        parsed_period = self._parse_report_period()
+        if parsed_period is None:
+            raise ValueError(
+                "Mobilabonnement per fylke krever en eksplisitt rapportperiode fra og med 2025-Halvår."
+            )
+
+        year, delar = parsed_period
+        if year < 2025:
+            raise ValueError(
+                "Mobilabonnement per fylke er bare tilgjengelig fra og med 2025-Halvår."
+            )
+
     def _should_include_datakom(self) -> bool:
         """Sjekk om Datakommunikasjon skal inkluderes automatisk."""
         if not self.include_datakom:
@@ -135,7 +185,13 @@ class EkomQuery:
 
     def _is_fylke_query(self) -> bool:
         """Sjekk om dette er en fylkesfordeling-query."""
-        return self.fylke is not None
+        return self._is_mobilabonnement_fylkesfordeling()
+
+    def _resolve_group_by_column(self, column: str) -> tuple[str, str, str]:
+        """Map semantiske grupperinger til faktiske kolonner."""
+        if column == "fylke":
+            return "n1 as fylke", "n1", "n1"
+        return column, column, column
 
     def _get_tp_filter(self) -> str:
         """Hent riktig tp-filter basert på query-type."""
@@ -230,8 +286,11 @@ class EkomQuery:
             conditions.append(f"n1 = '{self.n1}'")
 
         # Fylkesfilter (for mobil)
-        if self._is_fylke_query():
+        if self.fylke is not None:
             conditions.append(f"n1 = '{self.fylke}'")
+        elif self._is_mobilabonnement_fylkesfordeling():
+            fylker = ", ".join(f"'{f}'" for f in MOBIL_FYLKER)
+            conditions.append(f"n1 IN ({fylker})")
 
         # Tidsfiltre
         rapport_filter = self._build_rapport_filter()
@@ -260,8 +319,9 @@ class EkomQuery:
 
         # Brukerdefinerte grupperinger
         for col in self.group_by:
-            if col not in columns:
-                columns.append(col)
+            select_expr, _, _ = self._resolve_group_by_column(col)
+            if select_expr not in columns:
+                columns.append(select_expr)
 
         # Verdi
         columns.append("ROUND(SUM(svar), 0) as svar")
@@ -280,8 +340,9 @@ class EkomQuery:
 
         # Brukerdefinerte grupperinger
         for col in self.group_by:
-            if col not in group_cols:
-                group_cols.append(col)
+            _, group_expr, _ = self._resolve_group_by_column(col)
+            if group_expr not in group_cols:
+                group_cols.append(group_expr)
 
         return "GROUP BY " + ", ".join(group_cols)
 
@@ -297,8 +358,9 @@ class EkomQuery:
 
         # Andre kolonner
         for col in self.group_by:
-            if col not in order_cols:
-                order_cols.append(col)
+            _, _, order_expr = self._resolve_group_by_column(col)
+            if order_expr not in order_cols:
+                order_cols.append(order_expr)
 
         return "ORDER BY " + ", ".join(order_cols)
 

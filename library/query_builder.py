@@ -29,6 +29,9 @@ PopulasjonsType = Literal["alle", "tettsted", "spredtbygd"]
 GroupByType = Literal["nasjonal", "fylke", "kommune"]
 MetrikkType = Literal["husstander", "fritidsboliger", "adresser"]
 
+MOBILE_TECHNOLOGIES = {"4g", "5g", "mobil"}
+FIXED_TECHNOLOGIES = {"fiber", "ftb", "kabel", "radio", "satellitt", "dsl", "annet"}
+
 
 @dataclass
 class CoverageQuery:
@@ -59,6 +62,26 @@ class CoverageQuery:
     tilbydere: list[str] = field(default_factory=list)
     fylker: list[str] = field(default_factory=list)
 
+    def __post_init__(self):
+        """Normaliser og valider parametere tidlig."""
+        self.teknologi = [tek.lower() for tek in self.teknologi]
+
+        tech_set = set(self.teknologi)
+        mobile = tech_set & MOBILE_TECHNOLOGIES
+        fixed = tech_set & FIXED_TECHNOLOGIES
+
+        if mobile and fixed:
+            raise ValueError(
+                "Kan ikke blande mobil- og fastbredbåndsteknologier i samme CoverageQuery. "
+                "Kjør separate spørringer."
+            )
+
+        if mobile and self.kun_hc is not None:
+            raise ValueError("HC/HP-filter gjelder bare fastbredbånd, ikke mobildekning.")
+
+        if mobile and self.kun_egen:
+            raise ValueError("egen-infrastruktur-filter gjelder bare fastbredbånd, ikke mobildekning.")
+
     def _metrikk_kolonne(self) -> str:
         """Hent kolonnenavn for metrikk."""
         return {
@@ -73,27 +96,45 @@ class CoverageQuery:
             return "COUNT(DISTINCT a.adrid)"
         return f"SUM(a.{self._metrikk_kolonne()})"
 
-    def _build_fbb_filter(self) -> str:
-        """Bygg WHERE-klausul for fbb-tabell."""
+    def _uses_mobile_source(self) -> bool:
+        """Velg mob.parquet for rene mobilspørringer."""
+        return bool(set(self.teknologi) & MOBILE_TECHNOLOGIES)
+
+    def _expand_teknologier(self) -> list[str]:
+        """Normaliser teknologiliste til faktiske verdier i kildedata."""
+        if not self.teknologi:
+            return []
+
+        expanded = []
+        for tek in self.teknologi:
+            if tek == "mobil":
+                expanded.extend(["4g", "5g"])
+            else:
+                expanded.append(tek)
+        return sorted(set(expanded))
+
+    def _build_source_filter(self, alias: str) -> str:
+        """Bygg WHERE-klausul for dekningstabellen."""
         conditions = []
 
-        if self.teknologi:
-            tek_list = ", ".join(f"'{t}'" for t in self.teknologi)
-            conditions.append(f"f.tek IN ({tek_list})")
+        teknologier = self._expand_teknologier()
+        if teknologier:
+            tek_list = ", ".join(f"'{t}'" for t in teknologier)
+            conditions.append(f"{alias}.tek IN ({tek_list})")
 
         if self.hastighet_min:
             kbps = self.hastighet_min * 1000
-            conditions.append(f"f.ned >= {kbps}")
+            conditions.append(f"{alias}.ned >= {kbps}")
 
-        if self.kun_hc is not None:
-            conditions.append(f"f.hc = {'true' if self.kun_hc else 'false'}")
+        if not self._uses_mobile_source() and self.kun_hc is not None:
+            conditions.append(f"{alias}.hc = {'true' if self.kun_hc else 'false'}")
 
-        if self.kun_egen:
-            conditions.append("f.egen = true")
+        if not self._uses_mobile_source() and self.kun_egen:
+            conditions.append(f"{alias}.egen = true")
 
         if self.tilbydere:
             tilb_list = ", ".join(f"'{t}'" for t in self.tilbydere)
-            conditions.append(f"f.tilb IN ({tilb_list})")
+            conditions.append(f"{alias}.tilb IN ({tilb_list})")
 
         return " AND ".join(conditions) if conditions else "1=1"
 
@@ -119,36 +160,42 @@ class CoverageQuery:
         elif self.group_by == "fylke":
             return "a.fylke", "GROUP BY a.fylke"
         else:  # kommune
-            return "a.kommune", "GROUP BY a.kommune"
+            return "a.komnavn", "GROUP BY a.komnavn"
 
     def to_sql(self) -> str:
         """Generer SQL for spørringen."""
         adr_table = f"'lib/{self.year}/adr.parquet'"
-        fbb_table = f"'lib/{self.year}/fbb.parquet'"
+        dekning_table = (
+            f"'lib/{self.year}/mob.parquet'"
+            if self._uses_mobile_source()
+            else f"'lib/{self.year}/fbb.parquet'"
+        )
+        dekning_alias = "m" if self._uses_mobile_source() else "f"
 
         group_col, group_by = self._build_group_by()
         metrikk_agg = self._metrikk_aggregat()
-        fbb_filter = self._build_fbb_filter()
+        covered_agg = f"COALESCE({metrikk_agg} FILTER (WHERE d.adrid IS NOT NULL), 0)"
+        source_filter = self._build_source_filter(dekning_alias)
         adr_filter = self._build_adr_filter()
 
         # Bygg CTE for dekning
         cte = f"""
 WITH dekket AS (
-    SELECT DISTINCT f.adrid
-    FROM {fbb_table} f
-    WHERE {fbb_filter}
+    SELECT DISTINCT {dekning_alias}.adrid
+    FROM {dekning_table} {dekning_alias}
+    WHERE {source_filter}
 )"""
 
         # Hovedspørring
         if self.group_by == "nasjonal":
             main_query = f"""
 SELECT
-    {metrikk_agg} FILTER (WHERE d.adrid IS NOT NULL) as med_dekning,
+    {covered_agg} as med_dekning,
     {metrikk_agg} as totalt,
-    ROUND(
-        {metrikk_agg} FILTER (WHERE d.adrid IS NOT NULL) * 100.0 / {metrikk_agg},
-        1
-    ) as prosent
+    CASE
+        WHEN {metrikk_agg} = 0 THEN 0
+        ELSE ROUND({covered_agg} * 100.0 / {metrikk_agg}, 1)
+    END as prosent
 FROM {adr_table} a
 LEFT JOIN dekket d ON a.adrid = d.adrid
 WHERE {adr_filter}"""
@@ -158,12 +205,12 @@ WHERE {adr_filter}"""
 SELECT * FROM (
     SELECT
         {group_col} as {self.group_by},
-        {metrikk_agg} FILTER (WHERE d.adrid IS NOT NULL) as med_dekning,
+        {covered_agg} as med_dekning,
         {metrikk_agg} as totalt,
-        ROUND(
-            {metrikk_agg} FILTER (WHERE d.adrid IS NOT NULL) * 100.0 / {metrikk_agg},
-            1
-        ) as prosent,
+        CASE
+            WHEN {metrikk_agg} = 0 THEN 0
+            ELSE ROUND({covered_agg} * 100.0 / {metrikk_agg}, 1)
+        END as prosent,
         0 as sort_order
     FROM {adr_table} a
     LEFT JOIN dekket d ON a.adrid = d.adrid
@@ -174,12 +221,12 @@ SELECT * FROM (
 
     SELECT
         'NASJONALT' as {self.group_by},
-        {metrikk_agg} FILTER (WHERE d.adrid IS NOT NULL) as med_dekning,
+        {covered_agg} as med_dekning,
         {metrikk_agg} as totalt,
-        ROUND(
-            {metrikk_agg} FILTER (WHERE d.adrid IS NOT NULL) * 100.0 / {metrikk_agg},
-            1
-        ) as prosent,
+        CASE
+            WHEN {metrikk_agg} = 0 THEN 0
+            ELSE ROUND({covered_agg} * 100.0 / {metrikk_agg}, 1)
+        END as prosent,
         1 as sort_order
     FROM {adr_table} a
     LEFT JOIN dekket d ON a.adrid = d.adrid
